@@ -1,0 +1,8 @@
+gym
+tqdm
+torch 
+torchvision 
+torchaudio
+matplotlib
+pygame
+imageio-ffmpeg
