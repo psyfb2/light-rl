@@ -33,6 +33,7 @@ class VanillaPolicyGradient(BaseAgent):
                 RBF feature transformer.
             actor_hidden_layers (list, optional): actor hidden layers. Defaults to [].
             critic_hidden_layers (list, optional): critic hidden layers. Defaults to [].
+                From experience LSTM does not work well with critic for vanilla PG.
             actor_lr (_type_, optional): actor learning rate. Defaults to 1e-4.
             critic_lr (_type_, optional): critic learning rate. Defaults to 1e-4.
             gamma (float, optional): discount factor gamma. Defaults to 0.999.
@@ -53,6 +54,7 @@ class VanillaPolicyGradient(BaseAgent):
         self.actor_net = FCNetwork(
             # +1 in output for the standard deviation for At ~ N(means, std * Identity)
             (self.state_size, *actor_hidden_layers, self.action_size + 1), 
+            lstm_hidden_size=lstm_hidden_dim
         )
         self.actor_optim = Adam(
             self.actor_net.parameters(), lr=actor_lr, eps=actor_adam_eps
@@ -60,7 +62,8 @@ class VanillaPolicyGradient(BaseAgent):
         self.soft_plus = torch.nn.Softplus()
 
         self.critic_net = FCNetwork(
-            (self.state_size, *critic_hidden_layers, 1)
+            (self.state_size, *critic_hidden_layers, 1),
+            lstm_hidden_size=lstm_hidden_dim
         )
         self.critic_optim = Adam(
             self.critic_net.parameters(), lr=critic_lr, eps=critic_adam_eps
@@ -81,14 +84,14 @@ class VanillaPolicyGradient(BaseAgent):
         self.s = s
         s = self._transform_state(s)
         
-        actor_out, self.rec_state = self.actor_net((s, rec_state))
+        actor_out, self.actor_rec_state = self.actor_net((s, rec_state))
         mu = actor_out[:self.action_size]
         std = self.soft_plus(actor_out[self.action_size:])
 
         self.pdf = Normal(mu, std)
         self.a = self.pdf.sample()
 
-        return self.a.numpy(), self.rec_state
+        return self.a.numpy(), self.actor_rec_state
     
     def single_online_learn_step(self, s: np.ndarray, a: np.ndarray, r: float, next_s: np.ndarray, terminal: bool):
         # (s, a) needs to be from last call to get_action
@@ -104,7 +107,7 @@ class VanillaPolicyGradient(BaseAgent):
         with torch.no_grad():
             g = r
             if not terminal:
-                v_next_s, self.critic_rec_state = self.critic_net((next_s, self.critic_rec_state))
+                v_next_s, _ = self.critic_net((next_s, self.critic_rec_state))
                 g += self.gamma * v_next_s
             
         td_error = g - v_s
@@ -125,3 +128,10 @@ class VanillaPolicyGradient(BaseAgent):
         self.actor_optim.step()
 
         self.gamma_t *= self.gamma
+
+        for i in range(len(self.critic_rec_state)):
+            self.critic_rec_state[i] = ( 
+                self.critic_rec_state[i][0].detach(), 
+                self.critic_rec_state[i][1].detach()
+            )
+
