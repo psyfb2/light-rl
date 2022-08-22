@@ -20,7 +20,7 @@ CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
     "actor_adam_eps": 1e-3,
     "critic_adam_eps": 1e-3,
     "critic_hidden_layers": [],
-    "actor_hidden_layers": [],
+    "actor_hidden_layers": ['lstm'],
     "max_grad_norm": 50,
 
     "rbf_n_episodes": 250,
