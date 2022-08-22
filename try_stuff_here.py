@@ -1,7 +1,9 @@
 from light_rl.examples.ddpg_trainer import train_ddpg
+from light_rl.examples.vanilla_pg_trainer import train_vanilla_pg
 
 
-train_ddpg()
+# train_ddpg()
+train_vanilla_pg()
 
 
 '''

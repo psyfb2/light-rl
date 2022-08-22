@@ -2,10 +2,13 @@ import os
 import numpy as np
 import gym
 import torch
+import time
+import pickle
 
 from abc import ABC, abstractmethod
 from typing import Union, Tuple, List, Any
-import pickle
+from tqdm import tqdm
+
 
 
 class BaseAgent(ABC):
@@ -45,14 +48,14 @@ class BaseAgent(ABC):
         """
         pass
     
-    @abstractmethod
     def train(self, env: gym.Env, max_timesteps: int, max_training_time: float, 
               target_return: float, max_episode_length: int, eval_freq: int, eval_episodes: int) -> Tuple[List[float], List[float]]:
         """ Train the agent on a given enviroment.
 
         Args:
             env (gym.Env): Enviroment used to train the agent. Can be any enviroment
-                as long as it follows the gym interface
+                as long as it follows the new_step_api gym interface. IMPORTANT
+                MUST USE THE NEW_STEP_API.
             max_timesteps (int): maximum timesteps before training finishes
             max_training_time (float): maximum training time before training finishes
             target_return (float): if this return is exceeded when evaulating agent
@@ -67,10 +70,61 @@ class BaseAgent(ABC):
             (Tuple[List[float], List[float]]): first is list of episodic return ,
                 second is wall clock time since start for each respective episodic return
         """
-        pass
+        # default implementation. Assumes agent has a functional single_online_learn_step method.
+        episode_rewards = []
+        episode_r_times = []
+        start_time = time.time()
+        timesteps_elapsed = 0
+
+        with tqdm(total=max_timesteps) as progress_bar:
+            while timesteps_elapsed < max_timesteps:
+
+                # play episode
+                done = False
+                self.reset()
+                s = env.reset()
+                episode_reward = 0
+                iters = 0
+                while not done and iters < max_episode_length:
+                    a, _ = self.get_action(s, True)
+                    next_s, r, terminal, truncated, info = env.step(a)
+                    done = terminal
+                    
+                    self.single_online_learn_step(s, a, r, next_s, terminal)
+
+                    s = next_s
+                    episode_reward += r
+                    iters += 1
+                
+                elapsed_time = time.time() - start_time
+                episode_rewards.append(episode_reward)
+                episode_r_times.append(elapsed_time)
+                timesteps_elapsed += iters
+                progress_bar.update(iters)
+
+                if timesteps_elapsed % eval_freq < iters:
+                    avg_r = 0
+                    for _ in range(eval_episodes):
+                        avg_r += self.play_episode(env, max_episode_length)[0]
+                    avg_r /= eval_episodes
+
+                    progress_bar.write(
+                        f"Step {timesteps_elapsed} at time {round(elapsed_time, 3)}s. "
+                        f"Average reward using {eval_episodes} evals: {avg_r}"
+                    )
+
+                    if avg_r >= target_return:
+                        tqdm.write(f"Avg reward {avg_r} >= Target reward {target_return}, stopping early.")
+                        break
+                
+                if elapsed_time > max_training_time:
+                    progress_bar.write(f"Training time limit reached. Training stopped at {elapsed_time}s.")
+                    break
+        
+        return episode_rewards, episode_r_times
     
 
-    def single_online_learn_step(self, *args, **kwargs):
+    def single_online_learn_step(self, s: np.ndarray, a: np.ndarray, r: float, next_s: np.ndarray, terminal: bool):
         """ Perform a single online learning step. This could be used as follows:
             while not terminal:
                 a = agent.get_action(s, True)
@@ -80,10 +134,15 @@ class BaseAgent(ABC):
 
                 next_s = s
             
-            some algorithms cannot perform single online learning step (e.g. A3C)
-            in which case this method should do nothing. In other algorithms such
-            as DDPG, the input parameters might be a batch of (s, a, r, s', terminal)
-            tuples.
+            some algorithms cannot perform a single online learning step (e.g. A3C)
+            in which case this method should do nothing.
+        
+            Args:
+                s (np.ndarray): the second to last observed state
+                a (np.ndarray): the action taken at state s
+                r (float): reward for taking action a at state s
+                next_s (np.ndarray): the last observed state
+                terminal (bool): True if next_s is a terminal state
         """
         pass
 

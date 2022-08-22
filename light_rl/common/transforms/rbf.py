@@ -4,11 +4,13 @@ import numpy as np
 from sklearn.pipeline import FeatureUnion
 from sklearn.preprocessing import StandardScaler
 from sklearn.kernel_approximation import RBFSampler
+from tqdm import tqdm
 
 from light_rl.common.base.feature_transform import Transform
 
+
 class RBFTransform(Transform):
-    def __init__(self, env: gym.Env, n_episodes=1000, n_components=200, gammas=(0.05, 0.1, 0.5, 1.0)):
+    def __init__(self, env: gym.Env, n_episodes=250, n_components=200, gammas=(0.05, 0.1, 0.5, 1.0)):
         """ RBF state feature transformer. Gather states using n_episodes rollouts of uniform random
         policy. Use states to fit standard scaler and RBFSamplers. This can then be used to transform
         future states. This is useful as a feature extractor for linear RL models. transformed state dim
@@ -18,12 +20,13 @@ class RBFTransform(Transform):
             env (gym.Env): Enviroment in which to play episodes. Must follow gym
                 interface.
             n_episodes (int, optional): number of rollouts with uniform random polciy. 
-                Defaults to 1000.
+                Defaults to 250.
             n_components (int, optional): Dimensionality of rbf. Defaults to 200.
             gammas (tuple, optional): _description_. Defaults to (0.05, 0.1, 0.5).
         """
         states = []
-        for _ in range(n_episodes):
+        print(f"Playing {n_episodes} episodes to fit RBF")
+        for _ in tqdm(range(n_episodes)):
             s = env.reset()
             states.append(s)
             done = False
@@ -40,6 +43,7 @@ class RBFTransform(Transform):
             [(f"rbf{g}", RBFSampler(gamma=g, n_components=n_components)) for g in gammas]
         )
         self.rbfs.fit(self.standard_scaler.fit_transform(states))
+        print("RBF fit complete")
     
     def transform(self, s: np.ndarray) -> np.ndarray:
         """ Transform given state.

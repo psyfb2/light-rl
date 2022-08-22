@@ -1,8 +1,7 @@
-from multiprocessing.sharedctypes import Value
 import torch
 
 from torch import nn, Tensor
-from typing import Iterable, Union, Tuple, List
+from typing import Iterable, Union, Tuple, List, Any
 
 
 LSTM_STR = 'lstm'
@@ -53,43 +52,24 @@ class FCNetwork(nn.Module):
 
         self._layers = nn.ModuleList(self._layers)
 
-    def forward(self, x: Union[Tuple[Tensor, List[Tuple[Tensor, Tensor]]], Tensor]
-            ) -> Union[Tuple[Tensor, List[Tuple[Tensor, Tensor]]], Tensor]:
+    def forward(self, x: Tuple[Tensor, Any]
+            ) -> Tuple[Tensor, Any]:
         """ Compute the forward pass through the network
 
         Args:
-            x Union[Tuple[Tensor, List[Tuple[Tensor, Tensor]]], Tensor]: 
-                if this network does not have any lstm's than x is just a Tensor.
-                Otherwise x is a tuple containing input data tensor and 
-                list of recurrent state. For example:
-                (
-                    input_tensor, 
-                    [
-                        (hidden_lstm_1, context_lstm_1),
-                        ...., 
-                        (hidden_list_n, context_lstm_n)
-                    ]
-                )
-                list of recurrent state can be None, in which case
-                will initialise with zeros. 
+            x Tuple[Tensor, Any]: 
+                input tensor and recurrent state. Recurrent can be None to
+                initialise to zeros. Recurrent state ignored if this net
+                has no lstms.
 
         Returns:
-            Union[Tuple[Tensor, List[Tuple[Tensor, Tensor]]], Tensor]: 
-                if this network does not have any lstm's than output is just a Tensor.
-                otherwise output is output of forward pass along with 
-                any recurrent state. For example:
-                (
-                    output_tensor, 
-                    [
-                        (hidden_lstm_1, context_lstm_1),
-                        ...., 
-                        (hidden_list_n, context_lstm_n)
-                    ]
-                )
+            Tuple[Tensor, Any] 
+                output tensor and new recurrent state. Recurrent state can be
+                ignored if this network has no lstms.
         """
-        if self._lstm_count > 0:
-            x, hx_cx_lst = x
-        else:
+        x, hx_cx_lst = x
+
+        if self._lstm_count == 0:
             hx_cx_lst = []
 
         if hx_cx_lst is None:
@@ -116,8 +96,6 @@ class FCNetwork(nn.Module):
             else:
                 x = layer(x)
 
-        if self._lstm_count == 0: 
-            return x
         return x, new_hx_cx_lst
         
 
@@ -277,8 +255,8 @@ if __name__ == "__main__":
     net = FCNetwork(
         [2, 1]
     )
-    out = net(torch.zeros(2))
+    out, _ = net((torch.zeros(2), None))
     assert out.shape == torch.Size([1])
 
-    out = net(torch.zeros(16, 2))
+    out, _ = net((torch.zeros(16, 2), None))
     assert out.shape == torch.Size([16, 1])
