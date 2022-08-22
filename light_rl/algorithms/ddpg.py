@@ -56,7 +56,7 @@ class DDPG(BaseAgent):
 
         # init models
         ACTION_SIZE = action_space.shape[0]
-        STATE_SIZE = state_space.shape[0]
+        STATE_SIZE = ft_transformer.transform(np.zeros(state_space.shape)).shape[0]
 
         self.actor_net = FCNetworkNotRec(
             (STATE_SIZE, *actor_hidden_layers, ACTION_SIZE), torch.nn.Tanh 
