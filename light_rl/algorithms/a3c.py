@@ -95,8 +95,6 @@ class A3C(VanillaPolicyGradient):
                     max_training_time: float, target_return: float, 
                     max_episode_length: int, eval_freq: int, eval_episodes: int,
                     timesteps_counter: mp.Value, lock: mp.Lock, return_q: mp.Queue):
-        env = deepcopy(self.env)
-
         local_actor_net = FCNetwork(
             # +1 in output for the standard deviation for At ~ N(means, std * Identity)
             (self.state_size, *self.actor_hidden_layers, self.action_size + 1), 
@@ -113,35 +111,35 @@ class A3C(VanillaPolicyGradient):
         episode_r_times = []
         start_time = time.time()
         actor_rec_state = critic_rec_state = None
+        episode_num = 0
 
         while True:
-            with lock:
-                if timesteps_counter.value >= max_timesteps:
-                    break
-
             # sync local nets with global nets
             local_actor_net.load_state_dict(self.actor_net.state_dict())
             local_critic_net.load_state_dict(self.critic_net.state_dict())
 
-            states = []    # s_t            for t in {t_start, ..., t_start + t_max - 1}
+            values = []    # v(s_t)         for t in {t_start, ..., t_start + t_max - 1}
             log_probs = [] # log_prob(a_t)  for t in {t_start, ..., t_start + t_max - 1}
             entropies = [] # entropy(a_t)   for t in {t_start, ..., t_start + t_max - 1}
             rewards = []   # r_t            for t in {t_start + 1, ..., t_start + t_max}
 
+            # perform n-step update on actor and critic 
             for step in range(self.tmax):
+                critic_out, critic_rec_state = local_critic_net((s, critic_rec_state))
+
                 # get action
-                actor_out, actor_rec_state = local_actor_net((s, actor_rec_state)) # shape => (self.action_size + 1, )
+                actor_out, actor_rec_state = local_actor_net((s, actor_rec_state))
                 mu = actor_out[:self.action_size] # shape => (self.action_size, )
                 std = self.soft_plus(actor_out[self.action_size:]) # shape => (1, )
                 pdf = Normal(mu, std)
                 a = pdf.sample()  # shape => (self.action_dim, )
-
+                
                 next_s, r, terminal, truncated, _ = env.step(a.detach().numpy())
                 next_s = self._transform_state(next_s)
 
+                values.append(critic_out)
                 log_probs.append(pdf.log_prob(a).sum())
                 entropies.append(self.entropy_beta * torch.log(std))
-                states.append(s)
                 rewards.append(r)
 
                 episode_reward += r
@@ -153,27 +151,29 @@ class A3C(VanillaPolicyGradient):
                     timesteps_counter.value += 1
 
                 if terminal or episode_length >= max_episode_length:
+                    # cut n-step return short, as episode has finished
                     episode_rewards.append(episode_reward)
                     episode_r_times.append(elapsed_time)
                     s = self._transform_state(env.reset())
-                    episode_reward = episode_length = 0
-                    print(episode_rewards[-1])
+                    print("episode number", episode_num, "reward =", episode_rewards[-1])
+                    episode_num += 1
+
                     break
             
-            if terminal: 
+            if terminal:
                 R = 0
             else:
                 # bootstrap for n-step reward
                 with torch.no_grad():
-                    R = local_critic_net((next_s))
+                    R, _ = local_critic_net((next_s, critic_rec_state))
 
             actor_loss = critic_loss = 0
 
-            for i in range(len(states) - 1, -1, -1):
+            for i in range(len(values) - 1, -1, -1):
                 R = rewards[i] + self.gamma * R
-                td_error = R - local_critic_net(states[i])
+                td_error = R - values[i]
 
-                critic_loss += td_error.pow(2).sum()
+                critic_loss += td_error.pow(2)
                 actor_loss -= td_error.detach() * log_probs[i] + entropies[i]
         
             # update global nets with accumulated gradients
@@ -181,18 +181,60 @@ class A3C(VanillaPolicyGradient):
             self.actor_optim.zero_grad()
 
             critic_loss.backward()
-            torch.nn.utils.clip_grad_norm_(local_critic_net.parameters(), max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(local_critic_net.parameters(), self.max_grad_norm)
 
             actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(local_actor_net.parameters(), max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(local_actor_net.parameters(), self.max_grad_norm)
 
             self._ensure_shared_grads(local_actor_net, self.actor_net)
             self._ensure_shared_grads(local_critic_net, self.critic_net)
 
             self.critic_optim.step()
             self.actor_optim.step()
+
+            iters = episode_length
+            if terminal or episode_length >= max_episode_length:
+                episode_reward = episode_length = 0
+                actor_rec_state = critic_rec_state = None
+            else:
+                # prevent gradients of future n-step updates from flowing back
+                # to this rec state (this is truncated BPTT with k=self.tmax)
+                for rec_state in (critic_rec_state, actor_rec_state):
+                    for i in range(len(rec_state)):
+                        rec_state[i] = ( 
+                            rec_state[i][0].detach(), 
+                            rec_state[i][1].detach()
+                        )
+            
+            # break out of training based on timesteps, time or target return
+            with lock:
+                if timesteps_counter.value >= max_timesteps:
+                    break
+
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_training_time:
+                print(f"Training time limit reached. Training stopped at {elapsed_time}s.")
+                break
         
-        return_q.put((rank, episode_rewards))
+            '''
+            with lock:
+                timesteps_elapsed = timesteps_counter.value
+            if timesteps_elapsed % eval_freq < iters:
+                avg_r = 0
+                for _ in range(eval_episodes):
+                    avg_r += self.play_episode(env, max_episode_length)[0]
+                avg_r /= eval_episodes
+
+                print(
+                    f"Step {timesteps_elapsed} at time {round(elapsed_time, 3)}s. "
+                    f"Average reward using {eval_episodes} evals: {avg_r}"
+                )
+
+                if avg_r >= target_return:
+                    print(f"Avg reward {avg_r} >= Target reward {target_return}, stopping early.")
+                    break
+            '''
+        return_q.put((rank, episode_rewards, episode_r_times))
 
     def train(self, env: gym.Env, max_timesteps: int, max_training_time: float, 
               target_return: float, max_episode_length: int, eval_freq: int, eval_episodes: int):
@@ -203,7 +245,7 @@ class A3C(VanillaPolicyGradient):
 
         for rank in range(self.num_workers):
             p = mp.Process(target=self._a3c_worker, args=(
-                    rank, env, max_timesteps, max_training_time, target_return, 
+                    rank, deepcopy(env), max_timesteps, max_training_time, target_return, 
                     max_episode_length, eval_freq, eval_episodes,
                     timesteps_counter, lock, return_q
                 )
@@ -214,10 +256,18 @@ class A3C(VanillaPolicyGradient):
             p.join()
         
         episode_rewards = []
+        episode_r_times = []
         for _ in range(self.num_workers):
-            episode_rewards.append(return_q.get())
+            rank, rewards, times = return_q.get()
+            episode_rewards.append((rank, rewards))
+            episode_r_times.append((rank, times))
+
+        # list of list, each inner list is episode reward overtime for worker
         episode_rewards.sort(key=lambda tpl : tpl[0])
         episode_rewards = [tpl[1] for tpl in episode_rewards]
 
-        # list of list, each inner list episode reward overtime for worker
-        return episode_rewards  
+        # list of list, each inner list is time of episode reward for worker
+        episode_r_times.sort(key=lambda tpl : tpl[0])
+        episode_r_times = [tpl[1] for tpl in episode_rewards]
+       
+        return episode_rewards, episode_r_times

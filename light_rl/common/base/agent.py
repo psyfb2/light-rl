@@ -114,7 +114,7 @@ class BaseAgent(ABC):
                     )
 
                     if avg_r >= target_return:
-                        tqdm.write(f"Avg reward {avg_r} >= Target reward {target_return}, stopping early.")
+                        progress_bar.write(f"Avg reward {avg_r} >= Target reward {target_return}, stopping early.")
                         break
                 
                 if elapsed_time > max_training_time:

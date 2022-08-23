@@ -114,7 +114,7 @@ class VanillaPolicyGradient(BaseAgent):
 
         # update critic using MSE(g, v(s))
         self.critic_optim.zero_grad()
-        loss = (td_error).pow(2).sum() 
+        loss = td_error.pow(2)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.max_grad_norm)
         self.critic_optim.step()
