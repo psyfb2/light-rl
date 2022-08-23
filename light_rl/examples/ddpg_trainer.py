@@ -1,3 +1,4 @@
+import os
 import gym
 import matplotlib.pyplot as plt
 
@@ -28,8 +29,8 @@ PENDULUM_CONFIG = {
 }
 
 
-def train_ddpg(config=PENDULUM_CONFIG, video_folder="ddpg_pendulum_video"):
-    env =  gym.make(config["env"], new_step_api=True)
+def train_ddpg(config=PENDULUM_CONFIG, video_folder=os.path.join("videos", "ddpg_pendulum")):
+    env =  gym.make(config["env"], new_step_api=True, render_mode="single_rgb_array")
 
     agent = DDPG(
         env.action_space, env.observation_space,

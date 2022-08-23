@@ -68,7 +68,8 @@ class BaseAgent(ABC):
                 exceeds target return. If so end the episode.
         Returns:
             (Tuple[List[float], List[float]]): first is list of episodic return ,
-                second is wall clock time since start for each respective episodic return
+                second is wall clock time since start for each respective episodic return.
+                Will stop tracking episodic return after 1e5 episodes.
         """
         # default implementation. Assumes agent has a functional single_online_learn_step method.
         episode_rewards = []
@@ -97,8 +98,9 @@ class BaseAgent(ABC):
                     iters += 1
                 
                 elapsed_time = time.time() - start_time
-                episode_rewards.append(episode_reward)
-                episode_r_times.append(elapsed_time)
+                if len(episode_rewards) < 1e5:
+                    episode_rewards.append(episode_reward)
+                    episode_r_times.append(elapsed_time)
                 timesteps_elapsed += iters
                 progress_bar.update(iters)
 

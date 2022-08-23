@@ -1,3 +1,4 @@
+import os
 import gym
 import matplotlib.pyplot as plt
 
@@ -20,7 +21,7 @@ CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
     "actor_adam_eps": 1e-3,
     "critic_adam_eps": 1e-3,
     "critic_hidden_layers": [],
-    "actor_hidden_layers": ['lstm'],
+    "actor_hidden_layers": [], # works with ['lstm'] too
     "max_grad_norm": 50,
 
     "rbf_n_episodes": 250,
@@ -29,8 +30,8 @@ CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
 }
 
 
-def train_vanilla_pg(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder="vanilla_pg_continious_mc_video"):
-    env =  gym.make(config["env"], new_step_api=True)
+def train_vanilla_pg(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder=os.path.join("videos", "vanilla_pg_continious_mc")):
+    env =  gym.make(config["env"], new_step_api=True, render_mode="single_rgb_array")
 
     agent = VanillaPolicyGradient(
         env.action_space, env.observation_space, 

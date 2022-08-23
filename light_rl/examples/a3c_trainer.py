@@ -1,17 +1,19 @@
 import gym
+import os
 import matplotlib.pyplot as plt
 
 from light_rl.algorithms.a3c import A3C
 from light_rl.common.plotting import plot_avg_reward
 from light_rl.common.transforms.rbf import RBFTransform
+from light_rl.common.base.feature_transform import Transform
 
 CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
     "env": "MountainCarContinuous-v0",
-    "max_timesteps": 30000,
+    "max_timesteps": 100000,
     "max_training_time": 10 * 60,
     "target_return": 90,
     "max_episode_length": 2000,
-    "eval_freq": 3000,
+    "eval_freq": 10000,
     "eval_episodes": 10,
 
     "gamma": 0.9999,
@@ -20,12 +22,12 @@ CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
     "actor_adam_eps": 1e-3,
     "critic_adam_eps": 1e-3,
     "critic_hidden_layers": [],
-    "actor_hidden_layers": [],
+    "actor_hidden_layers": [], # works with ['lstm'] too
     "max_grad_norm": 50,
-    "num_workers": 1,
-    "entropy_beta": 0,
-    "tmax": 1,
-    "shared_optimizer": False,
+    "num_workers": os.cpu_count(),
+    "entropy_beta": 1e-5,
+    "tmax": 20,
+    "shared_optimizer": True,
 
     "rbf_n_episodes": 250,
     "rbf_n_components": 200,
@@ -33,11 +35,11 @@ CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
 }
 
 
-def train_a3c(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder="a3c_continious_mc_video"):
-    env =  gym.make(config["env"], new_step_api=True)
+def train_a3c(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder=os.path.join('videos', "a3c_continious_mc")):
+    env =  gym.make(config["env"], new_step_api=True, render_mode="single_rgb_array")
 
     agent = A3C(
-        env.action_space, env.observation_space, 
+        env.action_space, env.observation_space,
         RBFTransform(
             env,
             config["rbf_n_episodes"],
@@ -68,7 +70,7 @@ def train_a3c(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder="a3c_continiou
         config["eval_episodes"]
     )
 
-    for i in range(rewards):
+    for i in range(len(rewards)):
         # plot episodic return against episode number
         plt.plot(rewards[i])
         plt.title(f"Episodic Reward for Worker {i}")

@@ -87,6 +87,7 @@ class VanillaPolicyGradient(BaseAgent):
         actor_out, self.actor_rec_state = self.actor_net((s, rec_state))
         mu = actor_out[:self.action_size]
         std = self.soft_plus(actor_out[self.action_size:])
+        std = torch.nan_to_num(std, nan=100, posinf=100, neginf=1e-8)
 
         self.pdf = Normal(mu, std)
         self.a = self.pdf.sample()

@@ -94,7 +94,8 @@ class A3C(VanillaPolicyGradient):
     def _a3c_worker(self, rank: int, env: gym.Env, max_timesteps: int,
                     max_training_time: float, target_return: float, 
                     max_episode_length: int, eval_freq: int, eval_episodes: int,
-                    timesteps_counter: mp.Value, lock: mp.Lock, return_q: mp.Queue):
+                    timesteps_counter: mp.Value, last_eval: mp.Value, target_r_reached: mp.Value,
+                    lock: mp.Lock, return_q: mp.Queue):
         local_actor_net = FCNetwork(
             # +1 in output for the standard deviation for At ~ N(means, std * Identity)
             (self.state_size, *self.actor_hidden_layers, self.action_size + 1), 
@@ -111,7 +112,6 @@ class A3C(VanillaPolicyGradient):
         episode_r_times = []
         start_time = time.time()
         actor_rec_state = critic_rec_state = None
-        episode_num = 0
 
         while True:
             # sync local nets with global nets
@@ -131,6 +131,7 @@ class A3C(VanillaPolicyGradient):
                 actor_out, actor_rec_state = local_actor_net((s, actor_rec_state))
                 mu = actor_out[:self.action_size] # shape => (self.action_size, )
                 std = self.soft_plus(actor_out[self.action_size:]) # shape => (1, )
+                std = torch.nan_to_num(std, nan=100, posinf=100, neginf=1e-8)
                 pdf = Normal(mu, std)
                 a = pdf.sample()  # shape => (self.action_dim, )
                 
@@ -152,12 +153,10 @@ class A3C(VanillaPolicyGradient):
 
                 if terminal or episode_length >= max_episode_length:
                     # cut n-step return short, as episode has finished
-                    episode_rewards.append(episode_reward)
-                    episode_r_times.append(elapsed_time)
+                    if len(episode_rewards) < 1e4:
+                        episode_rewards.append(episode_reward)
+                        episode_r_times.append(elapsed_time)
                     s = self._transform_state(env.reset())
-                    print("episode number", episode_num, "reward =", episode_rewards[-1])
-                    episode_num += 1
-
                     break
             
             if terminal:
@@ -192,7 +191,6 @@ class A3C(VanillaPolicyGradient):
             self.critic_optim.step()
             self.actor_optim.step()
 
-            iters = episode_length
             if terminal or episode_length >= max_episode_length:
                 episode_reward = episode_length = 0
                 actor_rec_state = critic_rec_state = None
@@ -211,43 +209,57 @@ class A3C(VanillaPolicyGradient):
                 if timesteps_counter.value >= max_timesteps:
                     break
 
-            elapsed_time = time.time() - start_time
-            if elapsed_time > max_training_time:
-                print(f"Training time limit reached. Training stopped at {elapsed_time}s.")
+            if time.time() - start_time > max_training_time:
+                print(f"Worker {rank}: Training time limit reached. Training stopped at {time.time() - start_time}s.")
                 break
         
-            '''
             with lock:
+                if target_r_reached.value:
+                    break
+
                 timesteps_elapsed = timesteps_counter.value
-            if timesteps_elapsed % eval_freq < iters:
+                perform_eval = False
+                if timesteps_elapsed - last_eval.value > eval_freq:
+                    last_eval.value = timesteps_elapsed
+                    perform_eval = True
+
+            if perform_eval:
                 avg_r = 0
                 for _ in range(eval_episodes):
                     avg_r += self.play_episode(env, max_episode_length)[0]
                 avg_r /= eval_episodes
 
                 print(
-                    f"Step {timesteps_elapsed} at time {round(elapsed_time, 3)}s. "
+                    f"Worker {rank}: "
+                    f"Step {timesteps_elapsed}/{max_timesteps} at time {round(time.time() - start_time, 1)}s. "
                     f"Average reward using {eval_episodes} evals: {avg_r}"
                 )
 
                 if avg_r >= target_return:
-                    print(f"Avg reward {avg_r} >= Target reward {target_return}, stopping early.")
+                    print(
+                        f"Worker {rank}: Avg reward {avg_r} >= Target reward {target_return}, stopping early."
+                    )
+                    with lock:
+                        target_r_reached.value = 1
                     break
-            '''
+
         return_q.put((rank, episode_rewards, episode_r_times))
 
     def train(self, env: gym.Env, max_timesteps: int, max_training_time: float, 
               target_return: float, max_episode_length: int, eval_freq: int, eval_episodes: int):
         timesteps_counter = mp.Value('i', 0)
-        return_q = mp.Queue()
+        last_eval = mp.Value('i', 0)
+        target_r_reached = mp.Value('i', 0)
+        return_q = mp.Manager().Queue()
         lock = mp.Lock()
         processes = []
+        print("Starting A3C Training (no progress bar)")
 
         for rank in range(self.num_workers):
             p = mp.Process(target=self._a3c_worker, args=(
                     rank, deepcopy(env), max_timesteps, max_training_time, target_return, 
                     max_episode_length, eval_freq, eval_episodes,
-                    timesteps_counter, lock, return_q
+                    timesteps_counter, last_eval, target_r_reached, lock, return_q
                 )
             )
             p.start()
@@ -268,6 +280,6 @@ class A3C(VanillaPolicyGradient):
 
         # list of list, each inner list is time of episode reward for worker
         episode_r_times.sort(key=lambda tpl : tpl[0])
-        episode_r_times = [tpl[1] for tpl in episode_rewards]
+        episode_r_times = [tpl[1] for tpl in episode_r_times]
        
         return episode_rewards, episode_r_times
