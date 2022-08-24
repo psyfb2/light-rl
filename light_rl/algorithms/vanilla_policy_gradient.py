@@ -14,7 +14,7 @@ from light_rl.common.transforms.rbf import RBFTransform
 
 class VanillaPolicyGradient(BaseAgent):
     def __init__(self,  action_space: gym.Space, state_space: gym.Space,
-            ft_transformer: Transform, 
+            ft_transformer=Transform(), 
             actor_hidden_layers=[], critic_hidden_layers=[], 
             actor_lr=1e-4, critic_lr=1e-4, actor_adam_eps=1e-3, 
             critic_adam_eps=1e-3, gamma=0.999, max_grad_norm=50,
@@ -109,7 +109,7 @@ class VanillaPolicyGradient(BaseAgent):
             g = r
             if not terminal:
                 v_next_s, _ = self.critic_net((next_s, self.critic_rec_state))
-                g += self.gamma * v_next_s
+                g = g + self.gamma * v_next_s
             
         td_error = g - v_s
 

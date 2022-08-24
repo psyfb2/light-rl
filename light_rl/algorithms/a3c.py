@@ -1,35 +1,20 @@
 import time
 import gym
 import torch
-import numpy as np
+import torch.multiprocessing as mp
+import torch.nn
 
-from torch.optim import Adam
 from torch.distributions.normal import Normal
 
-from light_rl.common.base.agent import BaseAgent
-from light_rl.common.nets.device import DEVICE
-from light_rl.common.nets.fc_network import FCNetwork, LSTM_STR
+from light_rl.common.nets.fc_network import FCNetwork
 from light_rl.common.base.feature_transform import Transform
 from light_rl.common.optimizers.shared_adam import SharedAdam
 from light_rl.algorithms.vanilla_policy_gradient import VanillaPolicyGradient
 
 
-import gym
-import numpy as np
-import matplotlib.pyplot as plt
-import torch.nn
-import torch.multiprocessing as mp
-
-
-from gym import wrappers
-from tqdm import tqdm
-from copy import deepcopy
-
-
-
 class A3C(VanillaPolicyGradient):
     def __init__(self, action_space: gym.Space, state_space: gym.Space,
-            ft_transformer: Transform, 
+            ft_transformer: Transform = Transform(), 
             actor_hidden_layers=[], critic_hidden_layers=[], 
             actor_lr=1e-4, critic_lr=1e-4, actor_adam_eps=1e-3, 
             critic_adam_eps=1e-3, gamma=0.999, max_grad_norm=50,
@@ -172,8 +157,8 @@ class A3C(VanillaPolicyGradient):
                 R = rewards[i] + self.gamma * R
                 td_error = R - values[i]
 
-                critic_loss += td_error.pow(2)
-                actor_loss -= td_error.detach() * log_probs[i] + entropies[i]
+                critic_loss = critic_loss + td_error.pow(2)
+                actor_loss = actor_loss - (td_error.detach() * log_probs[i]) - entropies[i]
         
             # update global nets with accumulated gradients
             self.critic_optim.zero_grad()
@@ -257,7 +242,7 @@ class A3C(VanillaPolicyGradient):
 
         for rank in range(self.num_workers):
             p = mp.Process(target=self._a3c_worker, args=(
-                    rank, deepcopy(env), max_timesteps, max_training_time, target_return, 
+                    rank, env, max_timesteps, max_training_time, target_return, 
                     max_episode_length, eval_freq, eval_episodes,
                     timesteps_counter, last_eval, target_r_reached, lock, return_q
                 )
