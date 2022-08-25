@@ -11,7 +11,7 @@ PENDULUM_CONFIG = {
     "max_training_time": 15 * 60,
     "target_return": -300.0,
     "max_episode_length": 200,
-    "eval_freq": 30000,
+    "eval_freq": 100000,
     "eval_episodes": 3,
 
     "actor_hidden_layers": [64, 64],
@@ -20,6 +20,7 @@ PENDULUM_CONFIG = {
     "pop_size": 50,
     "std_noise": 0.5,
     "vbn_states": None,
+    "num_workers": os.cpu_count(),
     "reward_shaping_method": "rank"
 }
 
@@ -32,6 +33,7 @@ def train_es(config=PENDULUM_CONFIG, video_folder=os.path.join("videos", "es_pen
         actor_hidden_layers=config["actor_hidden_layers"],
         lstm_hidden_dim=config["lstm_hidden_dim"],
         lr=config["lr"],
+        num_workers=config["num_workers"],
         pop_size=config["pop_size"],
         std_noise=config["std_noise"],
         vbn_states=config["vbn_states"],

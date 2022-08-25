@@ -5,6 +5,8 @@ import torch.nn
 import torch.multiprocessing as mp
 import numpy as np 
 import scipy.stats
+import torch.multiprocessing as mp
+
 
 from torch.distributions.normal import Normal
 from tqdm import tqdm
@@ -60,6 +62,7 @@ class ES(BaseAgent):
         self.std_noise = std_noise
         self.vbn_states = vbn_states
         self.reward_shaping_method = reward_shaping_method
+        self.MAX_SEED = 2**32 - 1
 
         self.action_size = action_space.shape[0]
         self.state_size = ft_transformer.transform(np.zeros(state_space.shape)).shape[0]
@@ -69,10 +72,10 @@ class ES(BaseAgent):
             lstm_hidden_size=lstm_hidden_dim,
             output_activation=torch.nn.Tanh 
         )
-        self.optim = torch.optim.Adam(self.actor_net.parameters(), lr=lr)
 
-        # put the actor in shared memory
-        # self.actor_net.share_memory()
+        self.optim = torch.optim.Adam(self.actor_net.parameters(), lr=lr)
+        # put the global actor in shared memory
+        self.actor_net.share_memory()
     
     def get_action(self, s: np.ndarray, explore: bool = False, rec_state=None):
         with torch.no_grad():
@@ -85,11 +88,12 @@ class ES(BaseAgent):
             self.ft_transformer.transform(s)
         ).to(DEVICE).float()
     
-    def _generate_noise(self, net: torch.nn.Module) -> list:
+    def _generate_noise(self, net: torch.nn.Module, rng: np.random.RandomState) -> list:
         """ Get guassian noise N(0, 1) for each parameter in the net.
 
         Args:
             net (torch.nn.Module): net to generate noise for
+            rng (np.random.RandomState): random number generator used to generator noise
 
         Returns:
             List[np.ndarray]: list of noise matricies which can be used to
@@ -97,7 +101,7 @@ class ES(BaseAgent):
         """
         param_noise = []
         for p in net.parameters():
-            noise = np.random.normal(size=tuple(p.data.shape))
+            noise = rng.normal(size=tuple(p.data.shape))
             param_noise.append(noise)
         return param_noise
     
@@ -122,13 +126,68 @@ class ES(BaseAgent):
         Returns:
             np.ndarray: shaped rewards
         """
-        if self.reward_shaping_method == 'rank:':
+        if self.reward_shaping_method == 'rank':
             ranked = scipy.stats.rankdata(rewards)
             norm = (ranked - 1) / (len(ranked) - 1)
             norm -= 0.5
             return norm
         else:
             return (rewards - np.mean(rewards)) / np.std(rewards)
+        
+    def _es_worker(self, rank: int, env: gym.Env, max_episode_length: int,
+            results_q: mp.Queue, task_q: mp.Queue):
+        """ ES worker. Waits for True in task_q. Will then sync local net with the
+        global actor net and add positive and negative (mirror sampling)
+        guassian noise std_noise*N(0, 1) to the local net. Then will play an episode
+        for the positive and negative sample. Then put results in the results_q. 
+        if False is received on the task_q will stop listenining on the queue and terminate.
+
+        Args:
+            rank (int): id of this process
+            env (gym.Env): enviroment used for fitness evaluation (fitness is reward from one episode)
+            max_episode_length (int): maximum episode length when evaluating fitness
+            results_q (mp.Queue): Queue to put (seed, pos_reward, neg_reward, timesteps) results
+            task_q (mp.Queue): Listens on this queue for (True, ) in which case will 
+                generate a random seed, and seed positive then negative samples.
+                Then after playing episodes will put 
+                (seed, pos_reward, pos_length, pos_time, neg_reward, neg_length, neg_time)
+                on this queue.
+        """
+        local_actor_net = FCNetwork(
+            (self.state_size, *self.actor_hidden_layers, self.action_size ), 
+            lstm_hidden_size=self.lstm_hidden_dim,
+            output_activation=torch.nn.Tanh 
+        )
+
+        while task_q.get():
+            # generate random noise with seed
+            seed = np.random.randint(0, self.MAX_SEED + 1, dtype=np.uint32)
+            rng = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(seed)))
+            perturb = self._generate_noise(self.actor_net, rng)
+
+            # evaluate fitness of new parameters
+            rewards = []
+            lengths = []
+            times = []
+            for pert in (perturb, [-arr for arr in perturb]): # mirror sampling
+                # sync local net with global net
+                local_actor_net.load_state_dict(self.actor_net.state_dict())
+                self._perturb_net(local_actor_net, pert)
+
+                # play episode with local actor net
+                temp = self.actor_net
+                self.actor_net = local_actor_net
+                reward, iters = self.play_episode(env, max_episode_length)
+                self.actor_net = temp
+
+                rewards.append(reward)
+                lengths.append(iters)
+                times.append(time.time())
+                
+            results_q.put((seed, 
+                rewards[0], lengths[0], times[0], 
+                rewards[1], lengths[1], times[1])
+            )
 
     def train(self, env: gym.Env, max_timesteps: int, max_training_time: float, 
               target_return: float, max_episode_length: int, eval_freq: int, eval_episodes: int):
@@ -138,30 +197,49 @@ class ES(BaseAgent):
         timesteps_elapsed = 0
         timestep_last_eval = 0
 
+        # init workers
+        results_q = mp.SimpleQueue()
+        task_q = mp.SimpleQueue()
+        processes = []
+
+        for rank in range(self.num_workers):
+            p = mp.Process(target=self._es_worker, args=(
+                    rank, env, max_episode_length, results_q, task_q
+                )
+            )
+            p.start()
+            processes.append(p)
+
         with tqdm(total=max_timesteps) as progress_bar:
             while timesteps_elapsed < max_timesteps:
                 # play pop_size episodes
                 fs = []
                 perturbs = []
 
-                for i in range(self.pop_size // 2):
-                    old_net = self.actor_net.state_dict()
-                    perturb = self._generate_noise(self.actor_net)
+                for _ in range(self.pop_size // 2):
+                    task_q.put(True)
+                
+                for _ in range(self.pop_size // 2):
+                    seed, pos_r, pos_iters, pos_t, neg_r, neg_iters, neg_t = results_q.get()
+                    result = ((pos_r, pos_iters, pos_t), (neg_r, neg_iters, neg_t))
 
-                    for pert in (perturb, [-arr for arr in perturb]): # mirror sampling
-                        self._perturb_net(self.actor_net, pert)
-                        reward, iters = self.play_episode(env, max_episode_length)
+                    # reconstruct noise and add to perturbs
+                    rng = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(seed)))
+                    perturb = self._generate_noise(self.actor_net, rng)
+
+                    # update fs, perturbs
+                    for i, pert in enumerate((perturb, [-arr for arr in perturb])): # mirror sampling
+                        reward, iters, t = result[i]
 
                         fs.append(reward)
                         perturbs.append(pert)
-                        self.actor_net.load_state_dict(old_net)
                         progress_bar.update(iters)
                         timesteps_elapsed += iters
 
                         if len(episode_rewards) < 1e5:
                             episode_rewards.append(reward)
-                            episode_r_times.append(time.time() - start_time)
-                
+                            episode_r_times.append(t - start_time)
+
                 fs = self._shape_rewards(fs)
                 # update actor_net according to ES update
                 self.optim.zero_grad()
@@ -195,58 +273,11 @@ class ES(BaseAgent):
                 if elapsed_time > max_training_time:
                     progress_bar.write(f"Training time limit reached. Training stopped at {elapsed_time}s.")
                     break
-        
+
+        # termiante the workers
+        for _ in range(self.num_workers):
+            task_q.put(False)
+        for p in processes:
+            p.join()
+
         return episode_rewards, episode_r_times
-
-
-
-'''
-# hyperparams
-lr = 0.1
-pop_size = 50
-std_noise = 0.5
-
-assert pop_size % 2 == 0
-
-
-# func params
-a = 1
-b = 1
-c = 2
-d = -1
-const = 1
-
-assert a > 0
-assert b > 0  # must be positive so that maxima exists
-
-maxima = (c / (2 * a), d / (2 * b))  # from calculus
-
-def fitness(theta: np.ndarray):
-    # multidimensional quadratic
-    x, y = theta
-    return -a*x**2 - b*y**2 + c*x + d*y + const
-
-
-def evolution_strategies(theta: np.ndarray, epochs=10000):
-    assert theta.ndim == 1
-
-
-    for epoch in range(epochs):
-        # sample e1, ..., en, where ei ~ N(0, I)
-        noises = np.random.randn(pop_size // 2, 2)
-        noises = np.concatenate((noises, -noises))
-
-        # compute returns
-        returns = np.array([fitness(theta + std_noise * noise) for noise in noises])
-        returns = (returns - np.mean(returns)) / np.std(returns)
-
-        # update theta
-        theta = theta + lr * (np.dot(noises.T, returns) / (pop_size * std_noise))
-    
-    return theta
-
-
-print("True Maxima:", maxima)
-print("Estimated Maxima:", evolution_strategies(np.array([10, 10])))
-
-'''
