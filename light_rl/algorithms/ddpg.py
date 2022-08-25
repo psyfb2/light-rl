@@ -43,7 +43,7 @@ class DDPG(BaseAgent):
             buffer_capacity (int, optional): num sumples that replay buffer can store. Defaults to int(1e6).
         """
         super().__init__(action_space, state_space)
-        self.init_kwargs = {k: v for k, v in locals().items() if k != "self"}
+        self.init_kwargs = {k: v for k, v in locals().items() if k not in ('self', '__class__')}
         
         if LSTM_STR in actor_hidden_layers or LSTM_STR in critic_hidden_layers:
             raise ValueError(f"DDPG does not support '{LSTM_STR}'")
@@ -82,6 +82,17 @@ class DDPG(BaseAgent):
         )
 
         self.noise = Normal(torch.tensor([0.0]), torch.tensor([noise_std]))
+
+        self.torch_saveables.update(
+            {
+                "actor_net": self.actor_net,
+                "actor_target_net": self.actor_target_net,
+                "critic_net": self.critic_net,
+                "critic_target_net": self.critic_target_net,
+                "actor_optim": self.actor_optim,
+                "critic_optim": self.critic_optim
+            }
+        )
     
     def _transform_state(self, s: np.ndarray) -> torch.Tensor:
         return torch.from_numpy(

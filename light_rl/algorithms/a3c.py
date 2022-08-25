@@ -46,6 +46,7 @@ class A3C(VanillaPolicyGradient):
             ft_transformer, actor_hidden_layers, critic_hidden_layers, 
             actor_lr, critic_lr, actor_adam_eps, critic_adam_eps, 
             gamma, max_grad_norm, lstm_hidden_dim)
+        self.init_kwargs = {k: v for k, v in locals().items() if k not in ('self', '__class__')}
         
         self.actor_hidden_layers = actor_hidden_layers
         self.critic_hidden_layers = critic_hidden_layers
@@ -69,6 +70,15 @@ class A3C(VanillaPolicyGradient):
         # (grads are None and so won't be put in shared memory)        
         self.actor_net.share_memory()
         self.critic_net.share_memory()
+
+        self.torch_saveables.update(
+            {
+                "actor_net": self.actor_net,
+                "critic_net": self.critic_net,
+                "actor_optim": self.actor_optim,
+                "critic_optim": self.critic_optim
+            }
+        )
     
     def _transform_state(self, s: np.ndarray) -> torch.Tensor:
         return torch.from_numpy(

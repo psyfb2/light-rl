@@ -49,7 +49,7 @@ class ES(BaseAgent):
                 of rewards. Defaults to 'rank'
         """
         super().__init__(action_space, state_space)
-        self.init_kwargs = {k: v for k, v in locals().items() if k != "self"}
+        self.init_kwargs = {k: v for k, v in locals().items() if k not in ('self', '__class__')}
         
         self.ft_transformer = ft_transformer
         self.actor_hidden_layers = actor_hidden_layers
@@ -82,6 +82,14 @@ class ES(BaseAgent):
         self.optim = torch.optim.Adam(self.actor_net.parameters(), lr=lr)
         # put the global actor in shared memory
         self.actor_net.share_memory()
+
+        self.torch_saveables.update(
+            {
+                "actor_net": self.actor_net,
+                "optim": self.optim,
+            }
+        )
+    
     
     def get_action(self, s: np.ndarray, explore: bool = False, rec_state=None):
         with torch.no_grad():

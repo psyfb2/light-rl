@@ -87,5 +87,13 @@ def train_a3c(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder=os.path.join('
 
         plot_avg_reward(rewards[i])
 
-    env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
-    agent.play_episode(env, config["max_timesteps"])
+    video_env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
+    agent.play_episode(video_env, config["max_timesteps"])
+
+    # agents can be saved and loaded for later use
+    agent.save(video_folder)
+    del agent
+    agent = A3C.load(video_folder)
+    # play episode, could also use your own episode loop using agent.get_action
+    reward, iters = agent.play_episode(env, config["max_episode_length"])
+    print("Agent reward after saving and reloading:", reward)

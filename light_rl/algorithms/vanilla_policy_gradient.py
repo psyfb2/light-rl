@@ -41,7 +41,7 @@ class VanillaPolicyGradient(BaseAgent):
             lstm_hidden_dim (int, optional): (hx, cx) vector sizes of lstm if one is used
         """
         super().__init__(action_space, state_space)
-        self.init_kwargs = {k: v for k, v in locals().items() if k != "self"}
+        self.init_kwargs = {k: v for k, v in locals().items() if k not in ('self', '__class__')}
 
         self.ft_transformer = ft_transformer
         self.gamma = gamma
@@ -70,6 +70,15 @@ class VanillaPolicyGradient(BaseAgent):
         )
 
         self.reset()
+
+        self.torch_saveables.update(
+            {
+                "actor_net": self.actor_net,
+                "critic_net": self.critic_net,
+                "actor_optim": self.actor_optim,
+                "critic_optim": self.critic_optim
+            }
+        )
     
     def reset(self):
         self.gamma_t = 1

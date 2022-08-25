@@ -74,5 +74,13 @@ def train_ddpg(config=PENDULUM_CONFIG, video_folder=os.path.join("videos", "ddpg
 
     plot_avg_reward(rewards)
 
-    env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
-    agent.play_episode(env, config["max_timesteps"])
+    video_env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
+    agent.play_episode(video_env, config["max_timesteps"])
+
+    # agents can be saved and loaded for later use
+    agent.save(video_folder)
+    del agent
+    agent = DDPG.load(video_folder)
+    # play episode, could also use your own episode loop using agent.get_action
+    reward, iters = agent.play_episode(env, config["max_episode_length"])
+    print("Agent reward after saving and reloading:", reward)

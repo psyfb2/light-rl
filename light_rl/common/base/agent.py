@@ -23,7 +23,7 @@ class BaseAgent(ABC):
             action_space (gym.Space): action space of the enviroment
             state_space (gym.space): state space of the enviroment
         """
-        self.init_kwargs = {k: v for k, v in locals().items() if k != "self"}  # would need to put this subclass
+        self.init_kwargs = {k: v for k, v in locals().items() if k != "self"}  # will need to put this in subclass
 
         self.action_space = action_space
         self.state_space = state_space
@@ -190,12 +190,12 @@ class BaseAgent(ABC):
         Args:
             path (str): path to save agent
         """
-        torch.save(self.torch_saveables, os.path.sep(path, self.TORCH_SAVEABLES_FN))
+        torch.save(self.torch_saveables, os.path.join(path, self.TORCH_SAVEABLES_FN))
 
-        with open(os.path.sep(path, self.OTHER_SAVEABLES_FN), 'wb') as outp:
+        with open(os.path.join(path, self.OTHER_SAVEABLES_FN), 'wb') as outp:
             pickle.dump(self.other_saveables, outp, pickle.HIGHEST_PROTOCOL)
         
-        with open(os.path.sep(path, self.KWARGS_FN), 'wb') as outp:
+        with open(os.path.join(path, self.KWARGS_FN), 'wb') as outp:
             pickle.dump(self.init_kwargs, outp, pickle.HIGHEST_PROTOCOL)
 
         return path
@@ -206,11 +206,11 @@ class BaseAgent(ABC):
         Args:
             path (str): path to save agent
         """
-        checkpoint = torch.load(os.path.sep(path, self.TORCH_SAVEABLES_FN))
+        checkpoint = torch.load(os.path.join(path, self.TORCH_SAVEABLES_FN))
         for k, v in self.torch_saveables.items():
             v.load_state_dict(checkpoint[k].state_dict())
 
-        with open(os.path.sep(path, self.OTHER_SAVEABLES_FN), 'rb') as inp:
+        with open(os.path.join(path, self.OTHER_SAVEABLES_FN), 'rb') as inp:
             other_saveables = pickle.load(inp)
             for k, v in other_saveables.items():
                 self.k = v
@@ -222,10 +222,9 @@ class BaseAgent(ABC):
         Args:
             path (str): path to save agent
         """
-        with open(os.path.sep(path, cls.KWARGS_FN), 'rb') as inp:
+        with open(os.path.join(path, cls.KWARGS_FN), 'rb') as inp:
             init_kwargs = pickle.load(inp)
-        
+
         model = cls(**init_kwargs)
         model.restore(path)
-
         return model
