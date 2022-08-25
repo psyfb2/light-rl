@@ -22,6 +22,7 @@ class DDPG(BaseAgent):
             noise_std=0.1, gamma=0.999, tau=0.01, 
             max_grad_norm=50, batch_size=64, buffer_capacity=int(1e6)):
         """ Constructor for DDPG agent. Assumes continious action spaces.
+        Supports GPU training.
 
         Args:
             action_space (gym.Space): action space for this agent
@@ -60,10 +61,10 @@ class DDPG(BaseAgent):
 
         self.actor_net = FCNetworkNotRec(
             (STATE_SIZE, *actor_hidden_layers, ACTION_SIZE), torch.nn.Tanh 
-        )
+        ).to(DEVICE)
         self.actor_target_net = FCNetworkNotRec(
             (STATE_SIZE, *actor_hidden_layers, ACTION_SIZE), torch.nn.Tanh 
-        )
+        ).to(DEVICE)
         self.actor_target_net.hard_update(self.actor_net)
         self.actor_optim = Adam(
             self.actor_net.parameters(), lr=actor_lr, eps=actor_adam_eps
@@ -71,10 +72,10 @@ class DDPG(BaseAgent):
 
         self.critic_net = FCNetworkNotRec(
             (ACTION_SIZE + STATE_SIZE, *critic_hidden_layers, 1)
-        )
+        ).to(DEVICE)
         self.critic_target_net = FCNetworkNotRec(
             (ACTION_SIZE + STATE_SIZE, *critic_hidden_layers, 1)
-        )
+        ).to(DEVICE)
         self.critic_target_net.hard_update(self.critic_net)
         self.critic_optim = Adam(
             self.critic_net.parameters(), lr=critic_lr, eps=critic_adam_eps

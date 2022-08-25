@@ -24,7 +24,7 @@ class VanillaPolicyGradient(BaseAgent):
         Uses spherical covariance for normal distribution with continious actions.
         Vanilla PG can do well with no hidden layers on actor and critic while using
         RBF ft_transformer. However, PG may work well if actor uses LSTM and
-        critic has no hidden layers.
+        critic has no hidden layers. Supports GPU training.
 
         Args:
             action_space (gym.Space): action space for this agent
@@ -55,7 +55,7 @@ class VanillaPolicyGradient(BaseAgent):
             # +1 in output for the standard deviation for At ~ N(means, std * Identity)
             (self.state_size, *actor_hidden_layers, self.action_size + 1), 
             lstm_hidden_size=lstm_hidden_dim
-        )
+        ).to(DEVICE)
         self.actor_optim = Adam(
             self.actor_net.parameters(), lr=actor_lr, eps=actor_adam_eps
         )
@@ -64,7 +64,7 @@ class VanillaPolicyGradient(BaseAgent):
         self.critic_net = FCNetwork(
             (self.state_size, *critic_hidden_layers, 1),
             lstm_hidden_size=lstm_hidden_dim
-        )
+        ).to(DEVICE)
         self.critic_optim = Adam(
             self.critic_net.parameters(), lr=critic_lr, eps=critic_adam_eps
         )

@@ -3,6 +3,7 @@ import gym
 import torch
 import torch.multiprocessing as mp
 import torch.nn
+import numpy as np
 
 from torch.distributions.normal import Normal
 
@@ -68,6 +69,11 @@ class A3C(VanillaPolicyGradient):
         # (grads are None and so won't be put in shared memory)        
         self.actor_net.share_memory()
         self.critic_net.share_memory()
+    
+    def _transform_state(self, s: np.ndarray) -> torch.Tensor:
+        return torch.from_numpy(
+            self.ft_transformer.transform(s)
+        ).to("cpu").float()  # A3C only supports cpu
     
     def _ensure_shared_grads(self, model, shared_model):
         for param, shared_param in zip(model.parameters(),

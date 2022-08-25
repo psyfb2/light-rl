@@ -19,7 +19,7 @@ PENDULUM_CONFIG = {
     "lr": 0.1,
     "pop_size": 50,
     "std_noise": 0.5,
-    "vbn_states": None,
+    "vbn_states": False,
     "num_workers": os.cpu_count(),
     "reward_shaping_method": "rank"
 }
@@ -36,7 +36,7 @@ def train_es(config=PENDULUM_CONFIG, video_folder=os.path.join("videos", "es_pen
         num_workers=config["num_workers"],
         pop_size=config["pop_size"],
         std_noise=config["std_noise"],
-        vbn_states=config["vbn_states"],
+        vbn_states= ES.sample_vbn_states(env) if config["vbn_states"] else None,
         reward_shaping_method=config["reward_shaping_method"]
     )
 
@@ -66,5 +66,6 @@ def train_es(config=PENDULUM_CONFIG, video_folder=os.path.join("videos", "es_pen
 
     plot_avg_reward(rewards)
 
-    env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
-    agent.play_episode(env, config["max_timesteps"])
+    # record video hangs for some reason here
+    # env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
+    # agent.play_episode(env, config["max_timesteps"])

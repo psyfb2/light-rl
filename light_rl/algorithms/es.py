@@ -12,16 +12,17 @@ from torch.distributions.normal import Normal
 from tqdm import tqdm
 
 from light_rl.common.nets.fc_network import FCNetwork
-from light_rl.common.nets.device import DEVICE
+from light_rl.common.nets.fc_network_vbn import FCNetworkVBN
 from light_rl.common.base.feature_transform import Transform
 from light_rl.common.base.agent import BaseAgent
 
+DEVICE = "cpu"  # ES only supports CPU training
 
 class ES(BaseAgent):
     def __init__(self, action_space: gym.Space, state_space: gym.Space,
             ft_transformer=Transform(), actor_hidden_layers=[],
             lstm_hidden_dim=256, num_workers=mp.cpu_count(),
-            lr=0.1, pop_size=50, std_noise=0.5, vbn_states: list = None,
+            lr=0.1, pop_size=50, std_noise=0.5, vbn_states: torch.Tensor = None,
             reward_shaping_method='rank'):
         """ Constructor for Evolution Strategies (ES).
         Action space only continious for now (TODO: allow discrete action spaces)
@@ -40,11 +41,9 @@ class ES(BaseAgent):
             lr (float, optional): learning rate. Defaults to 0.1.
             pop_size (int, optional): population size, if odd will +1 to make even. Defaults to 50.
             std_noise (float, optional): noise standard deviation for creating offspring. Defaults to 0.5.
-            vbn_states (List[np.array], optional): states to use for virtual batch normalization. These
-                states should be gathered by playing the enviroment with random actions and keeping
-                each encoutered state with a probability of 1%. Then once 128 states have been gathered
-                this can be the vbn_states. If None will not use virtual batch normalization.
-                Defaults to None.
+            vbn_states (torch.Tensor, optional): states to use for virtual batch normalization. These
+                can be gathered by using the sample_vbn_states() method of this class. If None will
+                not use VBN. Defaults to None.
             reward_shaping_method (str, optional): method to use to shape pop_size rewards.
                 can be 'rank' for rank transformation, 'standardise' to standardise the list
                 of rewards. Defaults to 'rank'
@@ -67,12 +66,19 @@ class ES(BaseAgent):
         self.action_size = action_space.shape[0]
         self.state_size = ft_transformer.transform(np.zeros(state_space.shape)).shape[0]
 
-        self.actor_net = FCNetwork(
-            (self.state_size, *actor_hidden_layers, self.action_size ), 
-            lstm_hidden_size=lstm_hidden_dim,
-            output_activation=torch.nn.Tanh 
-        )
-
+        if self.vbn_states is None:
+            self.actor_net = FCNetwork(
+                (self.state_size, *actor_hidden_layers, self.action_size ), 
+                lstm_hidden_size=lstm_hidden_dim,
+                output_activation=torch.nn.Tanh 
+            )
+        else:
+            self.actor_net = FCNetworkVBN(vbn_states,
+                (self.state_size, *actor_hidden_layers, self.action_size ), 
+                lstm_hidden_size=lstm_hidden_dim,
+                output_activation=torch.nn.Tanh 
+            )
+            
         self.optim = torch.optim.Adam(self.actor_net.parameters(), lr=lr)
         # put the global actor in shared memory
         self.actor_net.share_memory()
@@ -153,12 +159,19 @@ class ES(BaseAgent):
                 (seed, pos_reward, pos_length, pos_time, neg_reward, neg_length, neg_time)
                 on this queue.
         """
-        local_actor_net = FCNetwork(
-            (self.state_size, *self.actor_hidden_layers, self.action_size ), 
-            lstm_hidden_size=self.lstm_hidden_dim,
-            output_activation=torch.nn.Tanh 
-        )
-
+        if self.vbn_states is None:
+            local_actor_net = FCNetwork(
+                (self.state_size, *self.actor_hidden_layers, self.action_size ), 
+                lstm_hidden_size=self.lstm_hidden_dim,
+                output_activation=torch.nn.Tanh 
+            )
+        else:
+            local_actor_net = FCNetworkVBN(self.vbn_states,
+                (self.state_size, *self.actor_hidden_layers, self.action_size ), 
+                lstm_hidden_size=self.lstm_hidden_dim,
+                output_activation=torch.nn.Tanh 
+            )
+            
         while task_q.get():
             # generate random noise with seed
             seed = np.random.randint(0, self.MAX_SEED + 1, dtype=np.uint32)
@@ -281,3 +294,34 @@ class ES(BaseAgent):
             p.join()
 
         return episode_rewards, episode_r_times
+    
+    @staticmethod
+    def sample_vbn_states(env: gym.Env, num_samples=128, keep_prob=0.01) -> torch.Tensor:
+        """ sample num_samples states from env by performing random action.
+        each state is kept with keep_prob until num_samples states have been saved.
+        The returns num_samples states as a torch tensor with shape 
+        (num_samples, observation_size)
+
+        Args:
+            env (gym.Env): Enviroment that follows two_step gym api
+            num_samples (int, optional): number of states to collect. Defaults to 128.
+            keep_prob (float, optional): probability of keeping an observed state. 
+                Defaults to 0.01.
+        """
+        states = []
+        while len(states) < num_samples:
+            done = False
+            s = env.reset()
+
+            while not done:
+                a = env.action_space.sample()
+                s, r, terminal, truncated, _ = env.step(a)
+                done = terminal or truncated
+
+                if np.random.rand() < keep_prob:
+                    states.append(s)
+
+                    if len(states) >= num_samples:
+                        break
+        
+        return torch.tensor(np.array(states))
