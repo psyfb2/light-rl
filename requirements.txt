@@ -7,3 +7,4 @@ matplotlib
 pygame
 imageio-ffmpeg
 scipy
+yfinance
