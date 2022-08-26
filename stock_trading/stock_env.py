@@ -11,8 +11,8 @@ from typing import List
 class StockEnv(gym.Env):
     metadata = {'render.modes': ['live']}
 
-    def __init__(self, tickers=["AAPL", "MSI", "SBUX", "GOOGL", "GOLD"], 
-            start_date="2017-01-01", end_date="2021-01-01", time_period=30,
+    def __init__(self, tickers=["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"], 
+            start_date="2010-01-01", end_date="2021-01-01", time_period=30,
             open_prices: np.ndarray = None, tech_indicators: np.ndarray = None,
             init_investment=int(2e4), max_action=100, 
             use_raw_prices=False, new_step_api=True):
@@ -23,7 +23,7 @@ class StockEnv(gym.Env):
                 Technical indicators will also be used when tickers are
                 specified.
                 Defaults to ["AAPL", "MSI", "SBUX", "GOOGL", "GOLD"].
-            start_date (str, optional): start date as yyyy-mm-dd str. 
+            start_date (str, optional): start date as yyyy-mm-dd str.
                 Defaults to "2017-01-01".
             end_date (str, optional): end date as yyyy-mm-dd str.
                 Defaults to "2021-01-01".
