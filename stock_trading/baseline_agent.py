@@ -38,18 +38,19 @@ class BaselineAgent(BaseAgent):
         """
         stock_prices = state[self.stock_price_indicies]
         cash = state[self.cash_idx]
-        buy_actions = np.zeros((self.n_stocks, ))
+        buy_actions = np.zeros_like(stock_prices)
 
         bought_stock = True
         while bought_stock:
             bought_stock = False
             for i in range(len(stock_prices)):
-                if cash < stock_prices[i]:
+                if cash >= stock_prices[i]:
                     buy_actions[i] += 1
                     cash -= stock_prices[i]
                     bought_stock = True
 
         return buy_actions / self.max_action, None
-
-if __name__ == "__main__":
-    pass
+    
+    def train(self, env: gym.Env, max_timesteps: int, max_training_time: float, 
+              target_return: float, max_episode_length: int, eval_freq: int, eval_episodes: int):
+        return None, None

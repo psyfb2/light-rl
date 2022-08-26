@@ -12,7 +12,7 @@ class StockEnv(gym.Env):
     def __init__(self, tickers=["AAPL", "MSI", "SBUX", "GOOGL", "GOLD"], 
             start_date="2017-01-01", end_date="2021-01-01",
             open_prices: np.ndarray = None, init_investment=int(2e4), 
-            max_action=100, new_step_api=True):
+            max_action=100, use_raw_prices=False, new_step_api=True):
         """ Constructor for StockEnv.
 
         Args:
@@ -30,8 +30,21 @@ class StockEnv(gym.Env):
                 Defaults to int(2e4).
             max_action (int, optional): The maximum number of shares
                 that can be bought or sold in one trading day per share. Defaults to 100.
+            use_raw_prices (bool, optional): If True the state space will use
+                raw stock prices. However this is not usually optimal for
+                ML models since regression does not do well during extrapolation
+                and the general trend for stocks is to go up, so your agent may
+                end up extrapolating when it receives states which were not
+                close to any states seen in training, therefore meaning
+                it would extrapolate. If False would use the difference in
+                price (i.e. the state of the price for a stock would be
+                todays price - yesterdays price), this differencing
+                can make models resilliant to non-stationary price data.
+                Note if False, will drop data for first trading day.
+
             new_step_api (bool, optional): Whether or not to use
                 the openai gym two_step_api. Defaults to True.
+            
         """
         super().__init__()
         if open_prices is not None:
@@ -49,14 +62,19 @@ class StockEnv(gym.Env):
             self.tickers = tickers
             self.start_date = start_date
             self.end_date = end_date
+    
+        if not use_raw_prices:
+            # val(t) = price(t) - price(t - 1), will lose first trading day
+            self.stock_prices = np.diff(self.stock_prices, axis=0)
 
         self.init_investment = init_investment
         self.max_action = max_action
+        self.use_raw_prices = use_raw_prices
         self.new_step_api = new_step_api
 
         self.ptr = 0
         self.portfolio_val = self.cash_state = self.stock_price_state = self.shares_owned_state = None
-        self.portfolio_val_hist = np.zeros((stock_prices.shape[0], ))
+        self.portfolio_val_hist = np.zeros((self.stock_prices.shape[0], ))
 
         self.STOCK_PRICE_INDICIES = np.array([i for i in range(self.n_stocks)])
         self.SHARES_OWNED_INDICIES = np.array([self.n_stocks + i for i in range(self.n_stocks)])
@@ -67,7 +85,8 @@ class StockEnv(gym.Env):
             low=np.NINF, high=np.inf, shape=(2*self.n_stocks+1, ), dtype=np.float32
         )
 
-    def _get_historical_share_prices(self, tickers: List[str], start: str, end: str) -> np.ndarray:
+    @staticmethod
+    def _get_historical_share_prices(tickers: List[str], start: str, end: str) -> np.ndarray:
         """ Get historical share price data
 
         Args:
@@ -176,50 +195,12 @@ class StockEnv(gym.Env):
         """
         fig = plt.figure()
         fig.suptitle(title)
-
         plt.plot(self.portfolio_val_hist)
-        plt.xticks(range(1, self.portfolio_val_hist.shape[0]))
         plt.xlabel("Trading Day")
         plt.ylabel("Portfolio Value")
         plt.show(block=block)
 
-        
-if __name__ == "__main__":
-    # test enviroment (TODO: package this into unit tests)
-    stock_prices = np.array([
-        [10, 15, 20], # day1
-        [15, 20, 15], # day2
-        [15, 25, 30], # day3
-        [0, 10, 35]   # day4
-    ])
-    init_investment = 50
-    env = StockEnv(None, None, None, stock_prices, init_investment, 100, False)
-
-    state = env.reset()
-    assert (state == np.array([10, 15, 20, 0, 0, 0, 50])).all()
-    assert (env.STOCK_PRICE_INDICIES == np.array([0, 1, 2])).all()
-    assert (env.SHARES_OWNED_INDICIES == np.array([3, 4, 5])).all()
-    assert env.CASH_INDEX == 6
-
-    next_s, r, done, info = env.step([0.02, 0.02, -0.01]) # day1 action
-    assert (next_s == np.array([15, 20, 15, 2, 2, 0, 0])).all()
-    assert r == 20
-    assert done is False
-    assert info["portfolio_value"] == 70
-
-    next_s, r, done, info = env.step([0, -0.02, 0.02]) # day2 action
-    assert (next_s == np.array([15, 25, 30, 2, 0, 2, 10])).all()
-    assert r == 30
-    assert done is False
-    assert info["portfolio_value"] == 100
-
-    next_s, r, done, info = env.step([0, 0, 0]) # day3 action
-    assert (next_s == np.array([0, 10, 35, 2, 0, 2, 10])).all()
-    assert r == -20
-    assert done is True
-    assert info["portfolio_value"] == 80
-
-    env.render(block=True)
+    
 
 
 
