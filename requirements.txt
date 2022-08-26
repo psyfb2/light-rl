@@ -8,3 +8,5 @@ pygame
 imageio-ffmpeg
 scipy
 yfinance
+TA-Lib
+pandas
