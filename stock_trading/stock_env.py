@@ -24,14 +24,18 @@ class StockEnv(gym.Env):
                 specified.
                 Defaults to ["AAPL", "MSI", "SBUX", "GOOGL", "GOLD"].
             start_date (str, optional): start date as yyyy-mm-dd str.
-                Defaults to "2017-01-01".
+                Will try to account for technical indicators needed a
+                set-back date. The actual state date can be
+                found in self.dates which is np array of dates
+                with shape (num_trading_days, ) for the dates of each trading
+                day. Defaults to "2017-01-01".
             end_date (str, optional): end date as yyyy-mm-dd str.
                 Defaults to "2021-01-01".
             time_period (int, optional): time frame used for technical
                 indicators
             open_prices (np.ndarray, optional): if this is not None
                 then tickers, start_date, end_date and time_period are ignored, 
-                will use this as the stock open price data,
+                will use this as the stock open price data (must be raw prices),
                 must be shape (num_trading_days, num_stocks). 
                 Defaults to None.
             tech_indicators (np.ndarray, optional): Use in conjuction with
@@ -79,14 +83,16 @@ class StockEnv(gym.Env):
             self.stock_prices = open_prices
             self.tech_indicators = tech_indicators
             self.n_stocks = open_prices.shape[1]
-            self.tickers = self.start_date = self.end_date = None
+            self.tickers = self.start_date = self.end_date = self.dates = None
+            self.raw_stock_prices = self.stock_prices
             if not use_raw_prices:
                 # v(t) = price(t) - price(t - 1)
                 # first day is lost when not using raw prices
                 self.stock_prices = np.diff(self.stock_prices, axis=0)
+                self.raw_stock_prices = self.raw_stock_prices[1:, :]
                 if self.tech_indicators is not None: self.tech_indicators = self.tech_indicators[1:, :]
         else:
-            self.stock_prices, self.tech_indicators = self._get_historical_share_prices(
+            self.stock_prices, self.raw_stock_prices, self.tech_indicators, self.dates = self._get_historical_share_prices(
                 tickers, start_date, end_date, time_period, use_raw_prices
             )
             self.n_stocks = len(tickers)
@@ -110,7 +116,9 @@ class StockEnv(gym.Env):
 
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(self.n_stocks, ), dtype=np.float32)
         self.observation_space = gym.spaces.Box(
-            low=np.NINF, high=np.inf, shape=(2*self.n_stocks+1, ), dtype=np.float32
+            low=np.NINF, high=np.inf, 
+            shape=(2*self.n_stocks+1+(self.tech_indicators.shape[1] if self.tech_indicators is not None else 0), ), 
+            dtype=np.float32
         )
 
     @staticmethod
@@ -124,22 +132,40 @@ class StockEnv(gym.Env):
             end (str): end date as yyyy-mm-dd str
 
         Returns:
-            open_prices (np.ndarray): open prices in shape (trading_days, len(tickers))
+            open_price (np.ndarray): open prices in shape (trading_days, len(tickers))
+            raw_price (np.ndarray): raw open prices (not differenced)
+                in shape (trading_days, len(tickers))
             technical_indicators (np.ndarray): indicators in shape (trading_days, num_indicators*num_stocks)
         """
         if time_period < 2:
             raise ValueError(f"Argument 'time_period' must be atleast 2, not {time_period}")
         
-        # max(33, time_period) + 1 trading days removed from start 
+        # max(33, time_period) + 3 trading days removed from start 
         # due to technical indicators producing NaN (they need history), offset this
-        start_offset = max(33, time_period) + 1
+        start_offset = max(33, time_period) + 3
         if not raw_prices:
             # v(t) = price(t) - price(t - 1), would lose first trading day, offset this
             start_offset += 1
         start = (pd.to_datetime(start) - pd.offsets.BDay(start_offset)).strftime('%Y-%m-%d')
 
         data = yf.download(tickers, start=start, end=end)
+        if len(tickers) == 1:
+            '''
+            data is df with df.columns => Index(
+                ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+            )
+            but need df.columns => MultiIndex([('Adj Close',  tickers[0]),
+                (    'Close',   tickers[0]),
+                (     'High',   tickers[0]),
+                (      'Low',   tickers[0]),
+                (     'Open',   tickers[0]),
+                (   'Volume', tickers[0])],
+            )
+            '''
+            data.columns = pd.MultiIndex.from_tuples([(col_name, tickers[0]) for col_name in data.columns])
+
         open_price = data[[('Open', tkr) for tkr in tickers]].to_numpy()  # => shape (n, num_stocks)
+        dates = data.index.to_numpy() # shape => (n, )
 
         indicator_funcs = [
             lambda i : talib.ADX(
@@ -197,6 +223,7 @@ class StockEnv(gym.Env):
         # therefore tech indicators of last day not used
         tech_indicators = tech_indicators[:, :, :-1]
         open_price = open_price[1:, :]
+        dates = dates[1:]
 
         # reshape tech_indicators to (trading_days, num_indicators*num_stocks)
         # from (num_indicators, num_stocks, trading_days)
@@ -209,13 +236,17 @@ class StockEnv(gym.Env):
         )
         tech_indicators = tech_indicators[keep_arr]
         open_price = open_price[keep_arr]
+        dates = dates[keep_arr]
+        raw_price = open_price
 
         if not raw_prices:
             # v(t) = price(t) - price(t - 1), lost first element
             open_price = np.diff(open_price, axis=0)
+            dates = dates[1:]
+            raw_price = raw_price[1:, :]
             tech_indicators = tech_indicators[1:, :]
 
-        return open_price, tech_indicators
+        return open_price, raw_price, tech_indicators, dates
         
     def reset(self) -> np.ndarray:
         """ Reset the enviroment by going back to 
@@ -230,6 +261,7 @@ class StockEnv(gym.Env):
         self.ptr = 0
         self.portfolio_val = self.cash_state = self.init_investment
         self.stock_price_state = self.stock_prices[0]
+        self.raw_stock_price_state = self.raw_stock_prices[0]
         self.shares_owned_state = np.array([0 for _ in self.stock_price_state])
         self.tech_state = self.tech_indicators[0] if self.tech_indicators is not None else []
         self.portfolio_val_hist[0] = self.cash_state
@@ -260,14 +292,13 @@ class StockEnv(gym.Env):
                 (should always be False)
             info (dict): info dict containing portfolio value
         """
-        if isinstance(a, np.ndarray): a = a.copy()
-        else: a = np.array(a)
+        if not isinstance(a, np.ndarray): a = np.array(a)
+        a = np.clip(a, self.action_space.low[0], self.action_space.high[0])
 
         if a.shape != (self.n_stocks,):
             raise ValueError(f"Argument 'a' should have shape ({self.n_stocks},) not {a.shape}")
+    
         for i in range(len(a)):
-            if a[i] > 1 or a[i] < -1:
-                raise ValueError(f"{i}'th element of Argument 'a' is {a[i]}, all elements should be between -1 and 1.")
             a[i] = round(a[i] * self.max_action)
         
         # perform trades
@@ -276,24 +307,25 @@ class StockEnv(gym.Env):
             if a[i] < 0:
                 # n_sales = minimum(stocks to sell, stocks owned)
                 n_sales = min(-a[i], self.shares_owned_state[i])
-                self.cash_state += n_sales * self.stock_price_state[i]
+                self.cash_state += n_sales * self.raw_stock_price_state[i]
                 self.shares_owned_state[i] -= n_sales
 
         # 2. buy shares for buy actions
         for i in range(len(a)):
             if a[i] > 0:
                 # n_buys = minimum(max num stocks that can be bought with cash, stocks to buy)
-                n_buys = min(self.cash_state // self.stock_price_state[i], a[i])
-                self.cash_state -= n_buys * self.stock_price_state[i]
+                n_buys = min(self.cash_state // self.raw_stock_price_state[i], a[i])
+                self.cash_state -= n_buys * self.raw_stock_price_state[i]
                 self.shares_owned_state[i] += n_buys
 
         self.ptr += 1  # the next trading day
         done = self.ptr >= len(self.stock_prices) - 1
         self.stock_price_state = self.stock_prices[self.ptr]
+        self.raw_stock_price_state = self.raw_stock_prices[self.ptr]
         self.tech_state = self.tech_indicators[self.ptr] if self.tech_indicators is not None else []
 
         # calculate reward, next state, portfolio value, done
-        portfolio_val = np.dot(self.stock_price_state, self.shares_owned_state) + self.cash_state
+        portfolio_val = np.dot(self.raw_stock_price_state, self.shares_owned_state) + self.cash_state
         reward = portfolio_val - self.portfolio_val  # change in portfolio value
         self.portfolio_val = portfolio_val
         self.portfolio_val_hist[self.ptr] = portfolio_val

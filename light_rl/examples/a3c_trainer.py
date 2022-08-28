@@ -9,7 +9,7 @@ from light_rl.common.base.feature_transform import Transform
 
 CONTINIOUS_MOUNTAIN_CAR_CONFIG = {
     "env": "MountainCarContinuous-v0",
-    "max_timesteps": 100000,
+    "max_timesteps": 1e7,
     "max_training_time": 10 * 60,
     "target_return": 90,
     "max_episode_length": 2000,
@@ -70,22 +70,21 @@ def train_a3c(config=CONTINIOUS_MOUNTAIN_CAR_CONFIG, video_folder=os.path.join('
         config["eval_episodes"]
     )
 
-    for i in range(len(rewards)):
-        # plot episodic return against episode number
-        plt.plot(rewards[i])
-        plt.title(f"Episodic Reward for Worker {i}")
-        plt.xlabel("Episode Number")
-        plt.ylabel("Reward")
-        plt.show()
+    # plot episodic return against episode number
+    plt.plot(rewards)
+    plt.title(f"Episodic Reward for Worker 0")
+    plt.xlabel("Episode Number")
+    plt.ylabel("Reward")
+    plt.show()
 
-        # plot episodic return against wall clock time
-        plt.plot(times[i], rewards[i])
-        plt.title(f"Episodic Reward for Worker {i}")
-        plt.xlabel("Elapsed Time (s)")
-        plt.ylabel("Reward")
-        plt.show()
+    # plot episodic return against wall clock time
+    plt.plot(times, rewards)
+    plt.title(f"Episodic Reward for Worker 0")
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Reward")
+    plt.show()
 
-        plot_avg_reward(rewards[i])
+    plot_avg_reward(rewards)
 
     video_env = gym.wrappers.RecordVideo(env, video_folder, new_step_api=True)
     agent.play_episode(video_env, config["max_timesteps"])

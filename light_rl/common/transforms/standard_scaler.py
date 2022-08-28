@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 
+from tqdm import tqdm
 from sklearn.pipeline import FeatureUnion
 from sklearn.preprocessing import StandardScaler
 
@@ -19,7 +20,8 @@ class StandardScalerTransform(Transform):
                 Defaults to 1000.
         """
         states = []
-        for _ in range(n_episodes):
+        print(f"Playing {n_episodes} episodes to fit StandardScaler")
+        for _ in tqdm(range(n_episodes)):
             s = env.reset()
             states.append(s)
             done = False

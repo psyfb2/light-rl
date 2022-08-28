@@ -18,14 +18,14 @@ class A3C(VanillaPolicyGradient):
             ft_transformer: Transform = Transform(), 
             actor_hidden_layers=[], critic_hidden_layers=[], 
             actor_lr=1e-4, critic_lr=1e-4, actor_adam_eps=1e-3, 
-            critic_adam_eps=1e-3, gamma=0.999, max_grad_norm=50,
+            critic_adam_eps=1e-3, actor_weight_decay=0,
+            critic_weight_decay=0, gamma=0.999, max_grad_norm=50,
             lstm_hidden_dim=256, tmax=20,
             entropy_beta=1e-5, num_workers=mp.cpu_count(), 
             shared_optimizer=True):
         """ Constructor for A3C.
         Action space only continious for now (TODO: allow discrete action spaces)
         Uses spherical covariance for normal distribution with continious actions.
-
         Args:
             action_space (gym.Space): action space for this agent
             state_space (gym.Space): state space for this agent
@@ -34,6 +34,10 @@ class A3C(VanillaPolicyGradient):
             critic_hidden_layers (list, optional): critic hidden layers. Defaults to [].
             actor_lr (_type_, optional): actor learning rate. Defaults to 1e-4.
             critic_lr (_type_, optional): critic learning rate. Defaults to 1e-4.
+            actor_adap_eps (float, optional): eps parameter used in actor adam optim
+            critic_adam_eps (float, option): eps parameter used in critic adam optim
+            actor_weight_decay (float, optional): L2 weight decay used for actor training
+            critic_weight_decay (float, optional): L2 weight decay used for critic training
             gamma (float, optional): discount factor gamma. Defaults to 0.999.
             max_grad_norm (int, optional): max grad norm used in gradient clipping. Defaults to 50.
             lstm_hidden_dim (int, optional): (hx, cx) vector sizes of lstm if one is used
@@ -42,10 +46,14 @@ class A3C(VanillaPolicyGradient):
             num_workers (int, optional): number of workers used to train A3C in parallel.
             shared_optimizer (bool, optional): Whether workers should use shared optimizer. Defaults to True.
         """
-        super().__init__(action_space, state_space,
-            ft_transformer, actor_hidden_layers, critic_hidden_layers, 
-            actor_lr, critic_lr, actor_adam_eps, critic_adam_eps, 
-            gamma, max_grad_norm, lstm_hidden_dim)
+        super().__init__(
+            action_space=action_space, state_space=state_space, ft_transformer=ft_transformer,
+            actor_hidden_layers=actor_hidden_layers, critic_hidden_layers=critic_hidden_layers,
+            actor_lr=actor_lr, critic_lr=critic_lr, actor_adam_eps=actor_adam_eps, 
+            critic_adam_eps=critic_adam_eps, actor_weight_decay=actor_weight_decay,
+            critic_weight_decay=critic_weight_decay, gamma=gamma, max_grad_norm=max_grad_norm,
+            lstm_hidden_dim=lstm_hidden_dim
+        )
         self.init_kwargs = {k: v for k, v in locals().items() if k not in ('self', '__class__')}
         
         self.actor_hidden_layers = actor_hidden_layers
@@ -57,12 +65,14 @@ class A3C(VanillaPolicyGradient):
 
         if shared_optimizer:
             self.actor_optim = SharedAdam(
-                self.actor_net.parameters(), lr=actor_lr
+                self.actor_net.parameters(), lr=actor_lr,
+                eps=actor_adam_eps, weight_decay=actor_weight_decay
             )
             self.actor_optim.share_memory()
 
             self.critic_optim = SharedAdam(
-                self.critic_net.parameters(), lr=critic_lr
+                self.critic_net.parameters(), lr=critic_lr,
+                eps=critic_adam_eps, weight_decay=actor_weight_decay
             )
             self.critic_optim.share_memory()
 
@@ -220,7 +230,7 @@ class A3C(VanillaPolicyGradient):
 
                 timesteps_elapsed = timesteps_counter.value
                 perform_eval = False
-                if timesteps_elapsed - last_eval.value > eval_freq:
+                if timesteps_elapsed - last_eval.value >= eval_freq:
                     last_eval.value = timesteps_elapsed
                     perform_eval = True
 
@@ -229,6 +239,7 @@ class A3C(VanillaPolicyGradient):
                 for _ in range(eval_episodes):
                     avg_r += self.play_episode(env, max_episode_length)[0]
                 avg_r /= eval_episodes
+                s = self._transform_state(env.reset())
 
                 print(
                     f"Worker {rank}: "
@@ -283,4 +294,5 @@ class A3C(VanillaPolicyGradient):
         episode_r_times.sort(key=lambda tpl : tpl[0])
         episode_r_times = [tpl[1] for tpl in episode_r_times]
        
-        return episode_rewards, episode_r_times
+       # return rewards for worker 0
+        return episode_rewards[0], episode_r_times[0]

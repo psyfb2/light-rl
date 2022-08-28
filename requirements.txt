@@ -10,3 +10,4 @@ scipy
 yfinance
 TA-Lib
 pandas
+skopt

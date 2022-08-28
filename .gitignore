@@ -153,3 +153,10 @@ dmypy.json
 cython_debug/
 
 videos/
+
+stock_files/*
+!stock_files/.gitkeep 
+!stock_files/a3c_model
+!stock_files/ddpg_model
+!stock_files/es_model
+!stock_files/pg_model

@@ -17,8 +17,8 @@ class VanillaPolicyGradient(BaseAgent):
             ft_transformer=Transform(), 
             actor_hidden_layers=[], critic_hidden_layers=[], 
             actor_lr=1e-4, critic_lr=1e-4, actor_adam_eps=1e-3, 
-            critic_adam_eps=1e-3, gamma=0.999, max_grad_norm=50,
-            lstm_hidden_dim=256):
+            critic_adam_eps=1e-3, actor_weight_decay=0, critic_weight_decay=0,
+            gamma=0.999, max_grad_norm=50, lstm_hidden_dim=256):
         """ Constructor for Vanilla Policy Gradient agent.
         Action space only continious for now (TODO: allow discrete action spaces)
         Uses spherical covariance for normal distribution with continious actions.
@@ -34,8 +34,12 @@ class VanillaPolicyGradient(BaseAgent):
             actor_hidden_layers (list, optional): actor hidden layers. Defaults to [].
             critic_hidden_layers (list, optional): critic hidden layers. Defaults to [].
                 From experience LSTM does not work well with critic for vanilla PG.
-            actor_lr (_type_, optional): actor learning rate. Defaults to 1e-4.
-            critic_lr (_type_, optional): critic learning rate. Defaults to 1e-4.
+            actor_lr (float, optional): actor learning rate. Defaults to 1e-4.
+            critic_lr (float, optional): critic learning rate. Defaults to 1e-4.
+            actor_adap_eps (float, optional): eps parameter used in actor adam optim
+            critic_adam_eps (float, option): eps parameter used in critic adam optim
+            actor_weight_decay (float, optional): L2 weight decay used for actor training
+            critic_weight_decay (float, optional): L2 weight decay used for critic training
             gamma (float, optional): discount factor gamma. Defaults to 0.999.
             max_grad_norm (int, optional): max grad norm used in gradient clipping. Defaults to 50.
             lstm_hidden_dim (int, optional): (hx, cx) vector sizes of lstm if one is used
@@ -57,7 +61,8 @@ class VanillaPolicyGradient(BaseAgent):
             lstm_hidden_size=lstm_hidden_dim
         ).to(DEVICE)
         self.actor_optim = Adam(
-            self.actor_net.parameters(), lr=actor_lr, eps=actor_adam_eps
+            self.actor_net.parameters(), lr=actor_lr, 
+            eps=actor_adam_eps, weight_decay=actor_weight_decay
         )
         self.soft_plus = torch.nn.Softplus()
 
@@ -66,9 +71,9 @@ class VanillaPolicyGradient(BaseAgent):
             lstm_hidden_size=lstm_hidden_dim
         ).to(DEVICE)
         self.critic_optim = Adam(
-            self.critic_net.parameters(), lr=critic_lr, eps=critic_adam_eps
+            self.critic_net.parameters(), lr=critic_lr, 
+            eps=critic_adam_eps, weight_decay=critic_weight_decay
         )
-
         self.reset()
 
         self.torch_saveables.update(
@@ -97,7 +102,6 @@ class VanillaPolicyGradient(BaseAgent):
         mu = actor_out[:self.action_size]
         std = self.soft_plus(actor_out[self.action_size:])
         std = torch.nan_to_num(std, nan=100, posinf=100, neginf=1e-8)
-
         self.pdf = Normal(mu, std)
         self.a = self.pdf.sample()
 

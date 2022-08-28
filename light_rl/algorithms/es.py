@@ -21,6 +21,7 @@ DEVICE = "cpu"  # ES only supports CPU training
 class ES(BaseAgent):
     def __init__(self, action_space: gym.Space, state_space: gym.Space,
             ft_transformer=Transform(), actor_hidden_layers=[],
+            actor_adam_eps=1e-8, actor_weight_decay=0,
             lstm_hidden_dim=256, num_workers=mp.cpu_count(),
             lr=0.1, pop_size=50, std_noise=0.5, vbn_states: torch.Tensor = None,
             reward_shaping_method='rank'):
@@ -34,6 +35,8 @@ class ES(BaseAgent):
             actor_hidden_layers (list, optional): actor hidden layers. 
                 can specify int for Linear followed by ReLU or
                 'lstm' to use an lstm layer. Defaults to [].
+            actor_adam_eps (float, optional): eps parameter of actor adam optim.
+            actor_weight_decay (float, optional): L2 weight decay to be used on actor. Default is 0.
             lstm_hidden_dim (int, optional): size of hidden and context vector in lstm
                 if one is used. Defaults to 256.
             num_workers (int, optional): number of workers to run the fitness function of ES in parallel.
@@ -47,6 +50,7 @@ class ES(BaseAgent):
             reward_shaping_method (str, optional): method to use to shape pop_size rewards.
                 can be 'rank' for rank transformation, 'standardise' to standardise the list
                 of rewards. Defaults to 'rank'
+            
         """
         super().__init__(action_space, state_space)
         self.init_kwargs = {k: v for k, v in locals().items() if k not in ('self', '__class__')}
@@ -79,7 +83,10 @@ class ES(BaseAgent):
                 output_activation=torch.nn.Tanh 
             )
             
-        self.optim = torch.optim.Adam(self.actor_net.parameters(), lr=lr)
+        self.optim = torch.optim.Adam(
+            self.actor_net.parameters(), lr=lr, 
+            eps=actor_adam_eps, weight_decay=actor_weight_decay
+        )
         # put the global actor in shared memory
         self.actor_net.share_memory()
 
@@ -301,7 +308,11 @@ class ES(BaseAgent):
         for p in processes:
             p.join()
 
-        return episode_rewards, episode_r_times
+        # episode_r_times might be out of order, make sure they are in order
+        sorted_rewards = sorted([
+            (episode_r_times[i], episode_rewards[i]) for i in range(len(episode_rewards))
+        ], key=lambda tpl: tpl[0])
+        return [tpl[1] for tpl in sorted_rewards], [tpl[0] for tpl in sorted_rewards]
     
     @staticmethod
     def sample_vbn_states(env: gym.Env, num_samples=128, keep_prob=0.01) -> torch.Tensor:

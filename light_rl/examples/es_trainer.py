@@ -7,7 +7,7 @@ from light_rl.common.plotting import plot_avg_reward
 
 PENDULUM_CONFIG = {
     "env": "Pendulum-v1",
-    "max_timesteps": float("inf"),
+    "max_timesteps": 1e7,
     "max_training_time": 15 * 60,
     "target_return": -300.0,
     "max_episode_length": 200,

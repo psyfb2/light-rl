@@ -44,21 +44,33 @@ def tests():
     assert (env.SHARES_OWNED_INDICIES == np.array([3, 4, 5])).all()
     assert env.CASH_INDEX == 6
     assert env.n_stocks == 3
+    assert (env.stock_price_state == np.array([10, 15, 20])).all()
+    assert (env.shares_owned_state == np.array([0, 0, 0])).all()
+    assert (env.cash_state == 50)
 
     next_s, r, done, info = env.step([0.02, 0.02, -0.01]) # day1 action
     assert (next_s == np.array([15, 20, 15, 2, 2, 0, 0])).all()
+    assert (env.stock_price_state == np.array([15, 20, 15])).all()
+    assert (env.shares_owned_state == np.array([2, 2, 0])).all()
+    assert (env.cash_state == 0)
     assert r == 20
     assert done is False
     assert info["portfolio_value"] == 70
 
     next_s, r, done, info = env.step([0, -0.02, 0.02]) # day2 action
     assert (next_s == np.array([15, 25, 30, 2, 0, 2, 10])).all()
+    assert (env.stock_price_state == np.array([15, 25, 30])).all()
+    assert (env.shares_owned_state == np.array([2, 0, 2])).all()
+    assert (env.cash_state == 10)
     assert r == 30
     assert done is False
     assert info["portfolio_value"] == 100
 
     next_s, r, done, info = env.step([0, 0, 0]) # day3 action
     assert (next_s == np.array([0, 10, 35, 2, 0, 2, 10])).all()
+    assert (env.stock_price_state == np.array([0, 10, 35])).all()
+    assert (env.shares_owned_state == np.array([2, 0, 2])).all()
+    assert (env.cash_state == 10)
     assert r == -20
     assert done is True
     assert info["portfolio_value"] == 80
@@ -102,6 +114,9 @@ def tests():
 
     state = env.reset()
     assert (state == np.array([10, 15, 20, 0, 0, 0, 50])).all()
+    assert (env.stock_price_state == np.array([10, 15, 20])).all()
+    assert (env.shares_owned_state == np.array([0, 0, 0])).all()
+    assert (env.cash_state == 50)
     assert (env.STOCK_PRICE_INDICIES == np.array([0, 1, 2])).all()
     assert (env.SHARES_OWNED_INDICIES == np.array([3, 4, 5])).all()
     assert env.CASH_INDEX == 6
@@ -125,6 +140,9 @@ def tests():
 
     state = env.reset()
     assert (state == np.array([10, 15, 20, 0, 0, 0, 50] + list(range(num_indicators)))).all()
+    assert (env.stock_price_state == np.array([10, 15, 20])).all()
+    assert (env.shares_owned_state == np.array([0, 0, 0])).all()
+    assert (env.cash_state == 50)
     assert (env.STOCK_PRICE_INDICIES == np.array([0, 1, 2])).all()
     assert (env.SHARES_OWNED_INDICIES == np.array([3, 4, 5])).all()
     assert env.CASH_INDEX == 6
@@ -132,18 +150,27 @@ def tests():
 
     next_s, r, done, info = env.step([0.02, 0.02, -0.01]) # day1 action
     assert (next_s == np.array([15, 20, 15, 2, 2, 0, 0] + list(range(num_indicators)))).all()
+    assert (env.stock_price_state == np.array([15, 20, 15])).all()
+    assert (env.shares_owned_state == np.array([2, 2, 0])).all()
+    assert (env.cash_state == 0)
     assert r == 20
     assert done is False
     assert info["portfolio_value"] == 70
 
     next_s, r, done, info = env.step([0, -0.02, 0.02]) # day2 action
     assert (next_s == np.array([15, 25, 30, 2, 0, 2, 10] + list(range(num_indicators)))).all()
+    assert (env.stock_price_state == np.array([15, 25, 30])).all()
+    assert (env.shares_owned_state == np.array([2, 0, 2])).all()
+    assert (env.cash_state == 10)
     assert r == 30
     assert done is False
     assert info["portfolio_value"] == 100
 
     next_s, r, done, info = env.step([0, 0, 0]) # day3 action
     assert (next_s == np.array([0, 10, 35, 2, 0, 2, 10] + list(range(num_indicators)))).all()
+    assert (env.stock_price_state == np.array([0, 10, 35])).all()
+    assert (env.shares_owned_state == np.array([2, 0, 2])).all()
+    assert (env.cash_state ==10)
     assert r == -20
     assert done is True
     assert info["portfolio_value"] == 80
@@ -167,27 +194,59 @@ def tests():
     )
     assert env.use_raw_prices is False
     assert (env.stock_prices == np.array([
-        [5, 5, -5], # day2
-        [0, 5, 15], # day3
-        [-15, -15, 5]   # day4
+        [5, 5, -5], # day2  [15, 20, 15]
+        [0, 5, 15], # day3  [15, 25, 30]
+        [-15, -15, 5]   # day4 [0, 10, 35]
     ])).all()
+    assert env.action_space.shape == (3, )
+    assert env.observation_space.shape == (7 + num_indicators, )
+    for _ in range(10):
+        state = env.reset()
+        assert (state == np.array([5, 5, -5, 0, 0, 0, 50] + list(range(num_indicators)))).all()
+        assert (env.stock_price_state == np.array([5, 5, -5])).all()
+        assert (env.shares_owned_state == np.array([0, 0, 0])).all()
+        assert (env.cash_state == 50)
+        assert (env.STOCK_PRICE_INDICIES == np.array([0, 1, 2])).all()
+        assert (env.SHARES_OWNED_INDICIES == np.array([3, 4, 5])).all()
+        assert env.CASH_INDEX == 6
+        assert env.n_stocks == 3
+
+        next_s, r, done, info = env.step([0.02, 0.02, -0.01]) # day2 action
+        assert (next_s == np.array([0, 5, 15, 2, 1, 0, 0] + list(range(num_indicators)))).all()
+        assert (env.stock_price_state == np.array([0, 5, 15])).all()
+        assert (env.shares_owned_state == np.array([2, 1, 0])).all()
+        assert (env.cash_state == 0)
+        assert r == 5
+        assert done is False
+        assert info["portfolio_value"] == 55
+
+        next_s, r, done, info = env.step([0, -0.02, 0.02]) # day3 action
+        assert (next_s == np.array([-15, -15, 5, 2, 0, 0, 25] + list(range(num_indicators)))).all()
+        assert (env.stock_price_state == np.array([-15, -15, 5])).all()
+        assert (env.shares_owned_state == np.array([2, 0, 0])).all()
+        assert (env.cash_state == 25)
+        assert r == -30
+        assert done is True
+        assert info["portfolio_value"] == 25
+
+        assert (env.portfolio_val_hist == np.array([50, 55, 25])).all()
 
 
     # requires internet connection (TODO: mock the yfinance api during testing)
     env = StockEnv(
-        tickers=["AAPL", "MSI", "SBUX"], start_date="2022-01-01", 
+        tickers=["AAPL"], start_date="2022-01-01", 
         end_date="2022-01-08", use_raw_prices=True
     )
-    assert env.n_stocks == 3
+    assert env.n_stocks == 1
     assert env.stock_prices.shape[0] == env.tech_indicators.shape[0]
     assert env.stock_prices.ndim == env.tech_indicators.ndim == 2
     raw_prices = env.stock_prices
 
     env = StockEnv(
-        tickers=["AAPL", "MSI", "SBUX"], start_date="2022-01-01", 
+        tickers=["AAPL"], start_date="2022-01-01", 
         end_date="2022-01-08", use_raw_prices=False
     )
-    assert env.n_stocks == 3
+    assert env.n_stocks == 1
     assert env.stock_prices.shape[0] == env.tech_indicators.shape[0]
     assert env.stock_prices.ndim == env.tech_indicators.ndim == 2
     assert np.isclose(env.stock_prices[1:], np.diff(raw_prices, axis=0)).all()
