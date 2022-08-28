@@ -10,4 +10,4 @@ scipy
 yfinance
 TA-Lib
 pandas
-skopt
+scikit-optimize
