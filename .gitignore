@@ -154,7 +154,8 @@ cython_debug/
 
 videos/
 
-stock_files/*
+stock_files/*env.pkl
+stock_files/test_env_raw.pkl
 !stock_files/.gitkeep 
 !stock_files/a3c_model
 !stock_files/ddpg_model

@@ -170,9 +170,6 @@ def train_agent(search_space: List[Union[Categorical, CategoricalList, Integer, 
 
         @use_named_args(search_space)
         def evaluate_agent(**params):
-            # TODO: REMOVE THIS ITS FOR TESTING
-            if evaluate_agent_data["counter"] > 0:
-                return 100000
             evaluate_agent_data["counter"] += 1
             kwargs = {
                 "ft_transformer": standardiser if params['use_rbf'] == 'false' else rbf,

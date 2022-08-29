@@ -147,7 +147,7 @@ def run_ES(train_env: StockEnv, extended_train_env: StockEnv,
         )
     ]
     x0 = [
-        [0.1, 0.5, 1e-8, 1e-5, 256, 50, "false", _HashableListAsDict([16, 16, 16, 16])],
+        [0.1, 0.5, 1e-8, 1e-5, 256, 50, "true", _HashableListAsDict([16, 16, 16, 16])],
         [0.1, 0.5, 1e-8, 1e-5, 256, 50, "false", _HashableListAsDict([64, 64])],
         [0.1, 0.5, 1e-8, 1e-5, 256, 50, "false", _HashableListAsDict([64, 64, 'lstm'])],
         [0.1, 0.5, 1e-8, 1e-5, 256, 50, "false", _HashableListAsDict([128, 'lstm', 'lstm'])]
@@ -195,7 +195,7 @@ def run_A3C(train_env: StockEnv, extended_train_env: StockEnv,
         CategoricalList([
             [], [64, 64], [128, 128],
             [16, 16, 16, 16], [32, 32, 32, 32], [64, 64, 64, 64],
-            [128, 128, 128, 128], [64, 'lstm']
+            [128, 128, 128, 128], [64, 'lstm'], [64, 64, 'lstm']
             ], name="actor_hidden_layers"
         ),
         CategoricalList([
@@ -208,10 +208,19 @@ def run_A3C(train_env: StockEnv, extended_train_env: StockEnv,
     x0 = [
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
         _HashableListAsDict([64, 64]), _HashableListAsDict([64, 64])],
+
+        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
+        _HashableListAsDict([64, 64, 'lstm']), _HashableListAsDict([64, 64])],
+
+        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
+        _HashableListAsDict([64, 'lstm']), _HashableListAsDict([64, 64])],
+
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "true", 
-        _HashableListAsDict([64, 64]), _HashableListAsDict([64, 64])],
-        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "true", 
-        _HashableListAsDict([64, 64]), _HashableListAsDict([64, 'lstm'])],
+        _HashableListAsDict([64, 'lstm']), _HashableListAsDict([64, 64])],
+
+        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
+        _HashableListAsDict([64, 'lstm']), _HashableListAsDict([64, 'lstm'])],
+
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "true", 
         _HashableListAsDict([]), _HashableListAsDict([])]
     ]
@@ -265,8 +274,10 @@ def run_PG(train_env: StockEnv, extended_train_env: StockEnv,
     x0 = [
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
         _HashableListAsDict([64, 64]), _HashableListAsDict([64, 64])],
+
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
-        _HashableListAsDict(['lstm']), _HashableListAsDict(['lstm'])],
+        _HashableListAsDict(['lstm']), _HashableListAsDict([64, 64])],
+
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
         _HashableListAsDict([]), _HashableListAsDict([])]
     ]
@@ -391,7 +402,7 @@ if __name__ == "__main__":
         train_env, extended_train_env, val_env, test_env, 
         rbf, extended_rbf, standardiser, extended_standiser,
         train_timelimit=TRAIN_TIMELIMIT, n_calls=18,
-        train_episodes=150, extended_train_episodes=1000,
+        train_episodes=100, extended_train_episodes=1500,
         eval_freq_episodes=50
     )
 
@@ -399,7 +410,7 @@ if __name__ == "__main__":
         train_env, extended_train_env, val_env, test_env, 
         rbf, extended_rbf, standardiser, extended_standiser,
         train_timelimit=TRAIN_TIMELIMIT, n_calls=18,
-        train_episodes=150, extended_train_episodes=1000,
+        train_episodes=100, extended_train_episodes=1500,
         eval_freq_episodes=50
     )
 
