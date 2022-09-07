@@ -20,6 +20,21 @@ from light_rl.common.transforms.standard_scaler import StandardScalerTransform
 from bayesian_optimization import play_episode, train_agent, CategoricalList, _HashableListAsDict
 
 
+TICKERS = ["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"]
+TRAIN_START_DATE = "2010-01-01"
+TRAIN_END_DATE = "2019-01-01"
+VAL_START_DATE = "2019-01-01"
+VAL_END_DATE = "2020-01-01"
+EXTENDED_TRAIN_START_DATE = "2010-01-01"
+EXTENDED_TRAIN_END_DATE = "2020-01-01"
+TEST_START_DATE = "2020-01-01"
+TEST_END_DATE= "2022-08-25"
+# TODO: make time_period and max_action tunable hyperparameters
+TIME_PERIOD = 30
+MAX_ACTION = 100
+INIT_INVESTMENT = 20000
+
+
 FOLDER_FN             = "stock_files"
 TRAIN_ENV_FN          = os.path.join(FOLDER_FN, "train_env.pkl")
 EXTENDED_TRAIN_ENV_FN = os.path.join(FOLDER_FN, "extended_train_env.pkl")
@@ -35,6 +50,8 @@ PORTFOLIO_VALS_PLT_FN = os.path.join(FOLDER_FN, "portfolio_values.pdf")
 TEST_REWARDS_FN       = os.path.join(FOLDER_FN, "test_rewards.txt")
 # 3 hr time limit to train each model, once hyperparams have been tuned
 TRAIN_TIMELIMIT       = 3*60*60
+
+# TODO:implement early stopping of training base on validation env reward
 
 
 def run_baseline(env: StockEnv):
@@ -210,19 +227,7 @@ def run_A3C(train_env: StockEnv, extended_train_env: StockEnv,
         _HashableListAsDict([64, 64]), _HashableListAsDict([64, 64])],
 
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
-        _HashableListAsDict([64, 64, 'lstm']), _HashableListAsDict([64, 64])],
-
-        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
         _HashableListAsDict([64, 'lstm']), _HashableListAsDict([64, 64])],
-
-        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "true", 
-        _HashableListAsDict([64, 'lstm']), _HashableListAsDict([64, 64])],
-
-        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "false", 
-        _HashableListAsDict([64, 'lstm']), _HashableListAsDict([64, 'lstm'])],
-
-        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, 1e-5, 20, "true", 
-        _HashableListAsDict([]), _HashableListAsDict([])]
     ]
     return train_agent(
         search_space=search_space, 
@@ -263,23 +268,23 @@ def run_PG(train_env: StockEnv, extended_train_env: StockEnv,
         Real(0, 1e-2, 'uniform', name='critic_weight_decay'),
         Categorical(['true', 'false'], name="use_rbf"),
         CategoricalList([
-            [], ['lstm'], [64, 64], [64, 'lstm']
+            [], ['lstm'], [64, 64]
             ], name="actor_hidden_layers"
         ),
         CategoricalList([
-            [], ['lstm'], [64, 64], [64, 'lstm']
+            [], ['lstm'], [64, 64]
             ], name="critic_hidden_layers"
         )
     ]
     x0 = [
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
+        _HashableListAsDict([]), _HashableListAsDict([])],
+
+        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
         _HashableListAsDict([64, 64]), _HashableListAsDict([64, 64])],
 
         [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
         _HashableListAsDict(['lstm']), _HashableListAsDict([64, 64])],
-
-        [0.9999, 1e-4, 1e-4, 1e-3, 1e-3, 1e-6, 1e-6, "true", 
-        _HashableListAsDict([]), _HashableListAsDict([])]
     ]
     return train_agent(
         search_space=search_space, 
@@ -321,46 +326,73 @@ def load_envs():
 
     except FileNotFoundError:
         train_env = StockEnv(
-            tickers=["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"],
-            start_date="2010-01-01", end_date="2019-01-01", time_period=30,
-            init_investment=10000, max_action=100, use_raw_prices=False
+            tickers=TICKERS,
+            start_date=TRAIN_START_DATE, end_date=TRAIN_END_DATE, time_period=TIME_PERIOD,
+            init_investment=INIT_INVESTMENT, max_action=MAX_ACTION, use_raw_prices=False
         )
         with open(TRAIN_ENV_FN, 'wb') as handle:
             pickle.dump(train_env, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
         extended_train_env = StockEnv(
-            tickers=["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"],
-            start_date="2010-01-01", end_date="2020-01-01", time_period=30,
-            init_investment=10000, max_action=100, use_raw_prices=False
+            tickers=TICKERS,
+            start_date=EXTENDED_TRAIN_START_DATE, end_date=EXTENDED_TRAIN_END_DATE, time_period=TIME_PERIOD,
+            init_investment=INIT_INVESTMENT, max_action=MAX_ACTION, use_raw_prices=False
         )
         with open(EXTENDED_TRAIN_ENV_FN, 'wb') as handle:
             pickle.dump(extended_train_env, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
         val_env = StockEnv(
-            tickers=["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"],
-            start_date="2019-01-01", end_date="2020-01-01", time_period=30,
-            init_investment=10000, max_action=100, use_raw_prices=False
+            tickers=TICKERS,
+            start_date=VAL_START_DATE, end_date=VAL_END_DATE, time_period=TIME_PERIOD,
+            init_investment=INIT_INVESTMENT, max_action=MAX_ACTION, use_raw_prices=False
         )
         with open(VAL_ENV_FN, 'wb') as handle:
             pickle.dump(val_env, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         test_env = StockEnv(
-            tickers=["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"],
-            start_date="2020-01-01", end_date="2022-08-25", time_period=30,
-            init_investment=10000, max_action=100, use_raw_prices=False
+            tickers=TICKERS,
+            start_date=TEST_START_DATE, end_date=TEST_END_DATE, time_period=TIME_PERIOD,
+            init_investment=INIT_INVESTMENT, max_action=MAX_ACTION, use_raw_prices=False
         )
         with open(TEST_ENV_FN, 'wb') as handle:
             pickle.dump(test_env, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         test_env_raw = StockEnv(
-            tickers=["AAPL", "MSI", "GOOGL", "SBUX", "GOLD", "BHP", "IBDRY"],
-            start_date="2020-01-01", end_date="2022-08-25", time_period=30,
-            init_investment=10000, max_action=100, use_raw_prices=True
+            tickers=TICKERS,
+            start_date=TEST_START_DATE, end_date=TEST_END_DATE, time_period=TIME_PERIOD,
+            init_investment=INIT_INVESTMENT, max_action=MAX_ACTION, use_raw_prices=True
         )
         with open(TEST_ENV_RAW_FN, 'wb') as handle:
             pickle.dump(test_env_raw, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
     return train_env, extended_train_env, val_env, test_env, test_env_raw
+
+
+def create_transforms(train_env: StockEnv, extended_train_env: StockEnv,
+        transforms_n_episodes=750, transforms_n_components=750):
+    rbf = extended_rbf = standardiser = extended_standiser = None
+    try:
+        DDPG.load(DDPG_FN)
+        ES.load(ES_FN)
+        A3C.load(A3C_FN)
+        VanillaPolicyGradient.load(PG_FN)
+    except FileNotFoundError:
+        # models have not been trained, need to create transforms
+        rbf = RBFTransform(
+            train_env, n_episodes=transforms_n_episodes, 
+            n_components=transforms_n_components
+        )
+        extended_rbf = RBFTransform(
+            extended_train_env, n_episodes=transforms_n_episodes, 
+            n_components=transforms_n_components
+        )
+        standardiser = StandardScalerTransform(
+            train_env, n_episodes=transforms_n_episodes
+        )
+        extended_standiser = StandardScalerTransform(
+            extended_train_env, n_episodes=transforms_n_episodes
+        )
+    return rbf, extended_rbf, standardiser, extended_standiser
 
 
 def calc_anualized_return(first_value: float, final_value: float, days_held: int):
@@ -377,59 +409,45 @@ if __name__ == "__main__":
     train_env, extended_train_env, val_env, test_env, test_env_raw = load_envs()
     baseline_reward, baseline_portfolio_values = run_baseline(test_env_raw)
 
-    # create Transforms
-    transforms_n_episodes = 750
-    transforms_n_components = 500
-    rbf = RBFTransform(
-        train_env, n_episodes=transforms_n_episodes, 
-        n_components=transforms_n_components
-    )
-    extended_rbf = RBFTransform(
-        extended_train_env, n_episodes=transforms_n_episodes, 
-        n_components=transforms_n_components
-    )
-    standardiser = StandardScalerTransform(
-        train_env, n_episodes=transforms_n_episodes
-    )
-    extended_standiser = StandardScalerTransform(
-        extended_train_env, n_episodes=transforms_n_episodes
+    rbf, extended_rbf, standardiser, extended_standiser = create_transforms(
+        train_env, extended_train_env, transforms_n_episodes=750, transforms_n_components=750
     )
 
     # train agents (this may take some time), 
     # increase n_calls to try more hyperparameters 
-    # (18 probs isnt enough but dont have strong hardware :( )
     ddpg_reward, ddpg_portfolio_values = run_DDPG(
         train_env, extended_train_env, val_env, test_env, 
         rbf, extended_rbf, standardiser, extended_standiser,
-        train_timelimit=TRAIN_TIMELIMIT, n_calls=18,
-        train_episodes=100, extended_train_episodes=1500,
+        train_timelimit=TRAIN_TIMELIMIT, n_calls=25,
+        train_episodes=1000, extended_train_episodes=1500,
         eval_freq_episodes=50
     )
 
     pg_reward, pg_portfolio_values = run_PG(
         train_env, extended_train_env, val_env, test_env, 
         rbf, extended_rbf, standardiser, extended_standiser,
-        train_timelimit=TRAIN_TIMELIMIT, n_calls=18,
-        train_episodes=100, extended_train_episodes=1500,
+        train_timelimit=TRAIN_TIMELIMIT, n_calls=25,
+        train_episodes=150, extended_train_episodes=200,
         eval_freq_episodes=50
     )
 
     es_reward, es_portfolio_values = run_ES(
         train_env, extended_train_env, val_env, test_env, 
         rbf, extended_rbf, standardiser, extended_standiser,
-        train_timelimit=TRAIN_TIMELIMIT, n_calls=18,
-        train_episodes=5e5, extended_train_episodes=1e8,
+        train_timelimit=TRAIN_TIMELIMIT, n_calls=25,
+        train_episodes=1e5, extended_train_episodes=1e7,
         eval_freq_episodes=1000
     )
 
     a3c_reward, a3c_portfolio_values = run_A3C(
         train_env, extended_train_env, val_env, test_env, 
         rbf, extended_rbf, standardiser, extended_standiser,
-        train_timelimit=TRAIN_TIMELIMIT, n_calls=18,
-        train_episodes=1000, extended_train_episodes=1e6,
-        eval_freq_episodes=500
+        train_timelimit=TRAIN_TIMELIMIT, n_calls=25,
+        train_episodes=3000, extended_train_episodes=1e6,
+        eval_freq_episodes=100
     )
 
+    # TODO: VPG, A3C use stochastic policies, should average 100 runs on test env
     # plot test env portfolio values for baseline, DDPG, ES, A3C, PG, DJI on same graph
     x = np.arange(baseline_portfolio_values.shape[0])
     fig = plt.figure()

@@ -142,7 +142,8 @@ class A3C(VanillaPolicyGradient):
                 actor_out, actor_rec_state = local_actor_net((s, actor_rec_state))
                 mu = actor_out[:self.action_size] # shape => (self.action_size, )
                 std = self.soft_plus(actor_out[self.action_size:]) # shape => (1, )
-                std = torch.nan_to_num(std, nan=100, posinf=100, neginf=1e-8)
+                std = torch.nan_to_num(std, nan=1, posinf=1, neginf=1e-8)
+                mu = torch.nan_to_num(mu, nan=1, posinf=1, neginf=-1)
                 pdf = Normal(mu, std)
                 a = pdf.sample()  # shape => (self.action_dim, )
                 

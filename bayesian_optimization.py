@@ -203,6 +203,10 @@ def train_agent(search_space: List[Union[Categorical, CategoricalList, Integer, 
             best_kwargs["ft_transformer"] = extended_rbf
         
         # init agent with old agents params, train on extended env
+        print("Hyperparameter tuning done")
+        print("best_val_reward:", {evaluate_agent_data['best_reward']})
+        print("best params:", best_kwargs)
+        
         extended_episode_length = extended_train_env.stock_prices.shape[0] - 1
         agent = agent_cls(**best_kwargs)
 

@@ -1,0 +1,31 @@
+{
+
+    "ddpg_anualized_return": 0.3331675673943362,
+    "ddpg_final_value": 42776.447927474976,
+    "ddpg_reward": 22776.447927474976,
+    "ddpg_sharpe_ratio": 0.7919694376776035,
+
+    
+    "es_anualized_return": 0.22700216707641707,
+    "es_final_value": 34349.66001224518,
+    "es_reward": 14349.660012245178,
+    "es_sharpe_ratio": 0.6701621619541899,
+
+    "a3c_anualized_return": 0.22404573361441682,
+    "a3c_final_value": 34131.27682971954,
+    "a3c_reward": 14131.276829719543,
+    "a3c_sharpe_ratio": 0.680082872037767,
+
+
+    "pg_anualized_return": 0.18706807560831806,
+    "pg_final_value": 31472.50467967987,
+    "pg_reward": 11472.50467967987,
+    "pg_sharpe_ratio": 0.6277258188619307
+
+    
+    "baseline_anualized_return": 0.1532145549507955,
+    "baseline_final_value": 29154.806468963623,
+    "baseline_reward": 9154.806468963623,
+    "baseline_sharpe_ratio": 0.583744600243467,
+
+}
