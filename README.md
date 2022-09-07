@@ -7,7 +7,7 @@ This project benchmarks the VPG, A3C, ES and DDPG algorithms for the task of sto
 This repo implements VPG, A3C, ES and DDPG algorithms using PyTorch. A stock environment is also implemented which follows the OpenAI Gym interface, 
 so new RL algorithms can be benchmarked using the environment. The RL algorithms can be trained on the stock environment with an initial Bayesian optimisaiton
 step for hyperparameter tuning. Results on test environment are below:
-![Screenshot](stock_files/Capture.png)
+![Screenshot](stock_files/Capture.PNG)
 
 |               | Initial Portfolio Value | Final Portfolio Value   | Annualised Return  | 
 | ------------- | ------------------------| ------------------------| -------------------|
